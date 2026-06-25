@@ -16,7 +16,7 @@ DynamicNode は以下を担当する：
 
 これらは XAML（UI 層）で決める
 
-##2. DynamicNode の構造（確定版）
+## 2. DynamicNode の構造（確定版）
 ```csharp
 class DynamicNode
 {
