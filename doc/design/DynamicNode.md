@@ -78,8 +78,8 @@ UI 表示（赤文字、⚠ アイコンなど）は XAML 側で決める。
 これ以上は持たない。
 特に UI 情報は絶対に持たない。
 
-### 5.1 DynamicNode の分類ルール（確定版）
-DynamicNode の生成時に、root のプロパティを以下のように分類する。
+### 5.1 oot プロパティの分類ルール（SBOMCraft 固有仕様）
+SPDX JSON の root に存在するプロパティは、TreeView 表示のために以下の 2 種類に分類する。
 
 ### ① Document に入れる項目（メタ情報）
 - SPDXID
@@ -101,6 +101,8 @@ DynamicNode の生成時に、root のプロパティを以下のように分類
 - hasExtractedLicensingInfos
 - snippets（もしあれば）
 - otherLicenses（SPDX 3.0 で追加される可能性）
+
+  
 ## 6. DynamicNode の生成ロジック（概要）
 1. トップノード “SBOM” を作る
 2. その下に Document / Packages / Files / Relationships を作る
