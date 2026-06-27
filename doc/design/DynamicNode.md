@@ -1,129 +1,173 @@
-## 1. DynamicNode の責務（何を担当するか）
-DynamicNode は以下を担当する：
+# 📘 DynamicNode.md（SBOMCraft2 正式仕様 / 完全改訂版）
 
-- TreeView に表示するための階層構造を表現する
-- JSON のどの位置を指しているか（Path）を保持する
-- 値（プリミティブ）か、子ノード（object/array）かを区別する
-- Unknown / Missing などの“データ属性”を保持する
-- UI に渡すための純粋なデータモデルである
+## 1. 概要（Overview）
 
-逆に、DynamicNode が 担当しないこと：
-- 色
-- アイコン
-- フォント
-- 表示スタイル
-- UI ロジック
+**DynamicNode は SBOM JSON の構造をノードとして表現するための内部データモデルである。**
 
-これらは XAML（UI 層）で決める
+- DynamicModel（JSON 抽象化レイヤー）から生成される  
+- SBOM の論理構造（Document / Packages / Files / Relationships）を表現する  
+- Raw JSON を保持し、右ペインの raw 表示やチェック処理に利用できる  
+- UI（TreeView / 右ペイン）とは完全に独立している  
 
-## 2. DynamicNode の構造（確定版）
+DynamicNode は **SBOM の構造を表す中間モデル**であり、  
+UI 表示制御の責務は持たない。
+
+---
+
+## 2. 目的（Purpose）
+
+DynamicNode の目的は以下の 4 点に集約される。
+
+### 2.1 SBOM の論理構造をノードとして表現する  
+DynamicNode は JSON の階層構造をノードとして表現し、  
+NodeType によって論理分類を行う。
+
+### 2.2 vendor extension（独自フィールド）を保持する  
+DynamicNode は DynamicModel と同様に、  
+未知のフィールドでもそのまま保持できる。
+
+### 2.3 requirements.json の Missing / Unknown チェックに利用する  
+DynamicNode は以下の情報を保持する：
+
+- JSON に存在しない → Missing  
+- Model に存在しない → Unknown  
+- JSON と Model の両方に存在 → OK  
+
+Missing / Unknown の判定は DynamicNode の構造情報を利用して行われる。
+
+### 2.4 Raw JSON の保持  
+DynamicNode は JsonElement を保持し、  
+右ペインの raw 表示や JSON Pointer の生成に利用できる。
+
+---
+
+## 3. 設計方針（Design Policy）
+
+DynamicNode は以下の設計方針に基づく。
+
+### ✔ 3.1 UI 非依存  
+DynamicNode は UI 表示制御（TreeView の表示／非表示、右ペインの表示モード）を持たない。  
+UI の制御は **SbomUiConfig + Converter + ViewModel** が担当する。
+
+### ✔ 3.2 JSON 構造の忠実な保持  
+DynamicNode は JSON の構造を変形しない。
+
+- Document の Children を削らない  
+- JSON の階層構造をそのまま保持  
+- Raw JSON を保持し、再構築可能  
+
+### ✔ 3.3 NodeType による論理分類  
+NodeType は SBOM の論理構造を表すための分類であり、  
+UI 表示のための分類ではない。
+
+### ✔ 3.4 NodeFactory によって生成される  
+DynamicNode は NodeFactory によって構築され、  
+DynamicNode 自身は JSON の解析ロジックを持たない。
+
+---
+
+## 4. プロパティ構造（Properties）
+
+DynamicNode のプロパティは以下の通り。
+
 ```csharp
-class DynamicNode
+public class DynamicNode
 {
-    public string Name { get; set; }            // 表示名（SBOM, Document, [0], SPDXID など）
-    public string Path { get; set; }            // JSON 内のパス
-    public string? Value { get; set; }          // プリミティブ値（object/array の場合は null）
+    public string Name { get; set; }          // JSON のキー名
+    public string Path { get; set; }          // JSON Pointer 形式のパス
+    public string? Value { get; set; }        // プリミティブ値（文字列/数値など）
     public List<DynamicNode> Children { get; set; } = new();
 
-    // データ属性（UI ではなくロジック側の責務）
-    public bool IsUnknown { get; set; }         // スキーマに無いフィールド
-    public bool IsMissing { get; set; }         // スキーマにあるのに JSON に無い（必要なら）
-    public bool IsRequired { get; set; }        // requirements.json で必須（必要なら）
+    public NodeType NodeType { get; set; }    // Document / Packages / Files / Relationships など
+
+    public bool IsMissing { get; set; }       // requirements.json に存在するが JSON に無い
+    public bool IsUnknown { get; set; }       // JSON に存在するが requirements.json に無い
+
+    public JsonElement RawJson { get; set; }  // 元の JSON を保持
 }
 ```
-✔ UI 情報は一切持たない
-- → MVVM の分離が保たれる
-- → Node は JSON の“意味”だけを持つ
-- → XAML 側で DataTrigger により色やアイコンを決められる
 
-## 3. TreeView の構造は DynamicNode が決める
-DynamicModel は JSON を読むだけ。
-TreeView の構造（どこをトップにするか）は DynamicNode の責務。
+### ✔ UI 用プロパティは持たない  
+DynamicNode は UI のためのプロパティ（Icon, Color, DisplayName など）を持たない。  
+必要な場合は ViewModel 側で生成する。
 
-✔ トップノードは固定で “SBOM”
+---
+
+## 5. NodeType の分類（NodeType Classification）
+
+NodeType は SBOM の論理構造を表すための列挙型である。
+
+例：
+
+```csharp
+public enum NodeType
+{
+    Document,
+    Packages,
+    Files,
+    Relationships,
+    Other
+}
 ```
-SBOM
- ├─ Document
- ├─ Packages
- ├─ Files
- └─ Relationships
-```
-✔ Document は root properties をまとめたノード
-SPDXID, name, spdxVersion, creationInfo など。
 
-✔ Packages / Files / Relationships は array を展開
+### ✔ NodeType の判定は NodeFactory の責務  
+DynamicNode 自身は NodeType の判定ロジックを持たない。
 
-[0], [1] のようにインデックスで表示。
+---
 
-## 4. Unknown Fields の扱い（Node の責務）
-Unknown の判定は：
+## 6. NodeFactory との関係（Integration with NodeFactory）
 
-DynamicModel → JSON の実データ
+DynamicNode は NodeFactory によって生成される。
 
-SchemaLoader → スキーマのフィールド一覧
+NodeFactory の責務：
 
-この 2 つの照合で決まる。
+- DynamicModel を走査して DynamicNode を構築  
+- NodeType を判定  
+- Path を生成  
+- RawJson を設定  
+- Missing / Unknown を設定  
 
-DynamicNode は Unknown を示す IsUnknown フラグだけ持つ。
+DynamicNode の責務：
 
-UI 表示（赤文字、⚠ アイコンなど）は XAML 側で決める。
+- NodeFactory が構築した構造を保持するだけ  
+- UI 表示制御は行わない  
 
-## 5. DynamicNode が持つべき“最小限の情報”
-- Name（表示名）
-- Path（JSON の位置）
-- Value（プリミティブ値）
-- Children（階層構造）
-- IsUnknown / IsMissing / IsRequired（データ属性）
+---
 
-これ以上は持たない。
-特に UI 情報は絶対に持たない。
+## 7. UI との関係（UI Independence）
 
-### 5.1 oot プロパティの分類ルール（SBOMCraft 固有仕様）
-SPDX JSON の root に存在するプロパティは、TreeView 表示のために以下の 2 種類に分類する。
+DynamicNode は UI とは完全に独立している。
 
-### ① Document に入れる項目（メタ情報）
-- SPDXID
-- name
-- spdxVersion
-- dataLicense
-- documentNamespace
-- creationInfo
-- documentDescribes
-- comment
-- annotations
-- externalDocumentRefs
-- その他の “メタ情報”
+- TreeView の表示制御  
+- 右ペインの表示モード  
+- ノードの表示／非表示  
 
-### ② Document と同列にする項目（大項目）
-- packages
-- files
-- relationships
-- hasExtractedLicensingInfos
-- snippets（もしあれば）
-- otherLicenses（SPDX 3.0 で追加される可能性）
+これらは **SbomUiConfig + Converter + ViewModel** が担当する。
 
-  
-## 6. DynamicNode の生成ロジック（概要）
-1. トップノード “SBOM” を作る
-2. その下に Document / Packages / Files / Relationships を作る
-3. Document → root properties を列挙
-4. Packages → array → [0] → object → properties
-5. Unknown → IsUnknown = true
-6. Missing → IsMissing = true（必要なら）
+DynamicNode は UI のために構造を変形しない。
 
+---
 
+## 8. 将来拡張（Future Extensions）
 
-## 🎉 まとめ：DynamicNode の設計方針（要点）
-UI とは完全に分離されたデータ構造
+DynamicNode は以下の拡張を想定している。
 
-TreeView の構造（SBOM → Document / Packages / Files / Relationships）を決めるのは Node
+- NodeType の拡張（SPDX 3.0 / 3.1 対応）  
+- Missing / Unknown チェックの強化  
+- Raw JSON の差分表示  
+- JSON Pointer の生成  
+- vendor extension の自動分類  
 
-Unknown / Missing はフラグで持つ（UI 情報は持たない）
+---
 
-DynamicModel は JSON を読むだけ、Node が TreeView の骨格を作る
+# 🎉 まとめ
 
-UI の色・アイコンは XAML で後から決める
+DynamicNode は SBOMCraft2 の「構造モデル」であり：
 
-この設計は MVVM の原則に完全に沿っていて、
-SBOMCraft の拡張性・保守性を最大化します。
+- JSON の構造を忠実に保持  
+- NodeType による論理分類  
+- Missing / Unknown チェックに利用  
+- Raw JSON を保持  
+- UI とは完全に独立  
 
+という **明確な責務分離**を持つ。
