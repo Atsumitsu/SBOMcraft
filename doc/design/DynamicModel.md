@@ -1,256 +1,233 @@
-# DynamicModel 設計書
+# DynamicModel.md（改訂版） 2026/6/27
 
-## 1. 目的
+## 1. 概要（Overview）
 
 DynamicModel は、SPDX JSON（SBOM）を固定クラスにマッピングせず、  
 **動的にアクセス・探索・表示するための抽象レイヤー**である。
 
 主な目的は以下の通り：
-
-- SPDX のバージョン変更に強い構造を実現する  
+- JSON を固定クラスにマッピングしない
+- SPDX 2.3 / 3.0 / 3.1 などのバージョン差異に強い
+- NodeFactory が DynamicModel を使って DynamicNode を構築する
+- UI（TreeView / 右ペイン）とは完全に独立している
 - vendor extension（独自フィールド）をそのまま扱える  
-- TreeView 表示用の階層構造を生成する  
 - requirements.json のチェック（Missing / Unknown）に利用する  
-- JsonDocument を保持し、元の JSON 構造を完全に再現する
+- Raw JSON を完全に保持し、後続処理に提供
+
+DynamicModel は SBOM の構造を歩くための API であり、
+UI 表示やフィルタリングの責務は持たない。
+
+---
+## 2. 目的（Purpose）
+
+DynamicModel の目的は以下の 3 点に集約される。
+
+### 2.1 Vendor Extension の完全サポート  
+SPDX には多くの vendor extension（独自フィールド）が存在する。
+
+- CycloneDX 互換フィールド  
+- GitHub SBOM 拡張  
+- Microsoft Security Extension  
+- SPDX 3.0 preview フィールド  
+- 将来追加される未知のフィールド  
+
+DynamicModel は JSON を固定クラスにマッピングしないため、  
+**未知のフィールドでも損失なく保持できる。**
 
 ---
 
-## 2. 全体構造
+### 2.2 requirements.json の Missing / Unknown チェック  
+DynamicModel は JSON の構造を完全に保持するため、  
+requirements.json のチェックに利用できる。
 
-DynamicModel は以下の 2 つの責務を持つ：
+- JSON に存在しない → Missing  
+- Model に存在しない → Unknown  
+- JSON と Model の両方に存在 → OK  
 
-1. **JSON の階層構造を動的に探索する（JsonDocument ベース）**
-2. **TreeView 用の中間モデル（DynamicNode）を生成する**
-
-JsonDocument
-↓（保持）
-DynamicModel
-↓（階層を列挙）
-DynamicNode（UI 用）
-↓（バインド）
-TreeView（WPF）
-
+この仕組みにより、  
+**SPDX のバージョン差異や vendor extension に強いチェックエンジン**を実現できる。
 
 ---
 
-## 3. クラス構成
+### 2.3 Raw JSON の完全保持  
+DynamicModel は JsonElement を保持し、  
+元の JSON を完全に再現できる。
 
-### 3.1 DynamicModel
+これは以下の用途に利用される：
+
+- 右ペインの Raw 表示  
+- JSON Pointer の生成  
+- 差分表示（将来機能）  
+- チェック結果のハイライト  
+
+---
+
+
+## 3. 設計方針（Design Policy）
+
+DynamicModel は以下の設計方針に基づく。
+
+### ✔ 3.1 UI 非依存  
+DynamicModel は UI 表示制御（TreeView の表示／非表示、右ペインの表示モード）を持たない。  
+UI の制御は **SbomUiConfig + Converter + ViewModel** が担当する。
+
+### ✔ 3.2 JSON 構造の忠実な保持  
+DynamicModel は JSON の構造を変形しない。
+
+- Document の Children を削らない  
+- JSON の階層構造をそのまま保持  
+- Raw JSON を保持し、再構築可能  
+
+### ✔ 3.3 NodeFactory のためのデータソース  
+DynamicModel は NodeFactory に JSON 構造を提供するだけであり、  
+ノード分類（Document / Packages / Files など）は NodeFactory の責務。
+
+---
+
+## 4. クラス構造（Class Structure）
 
 ```csharp
-class DynamicModel
+public class DynamicModel
 {
-    JsonDocument _doc;
+    private readonly JsonElement _root;
 
-    JsonElement Root { get; }
+    public DynamicModel(JsonDocument document)
+    {
+        _root = document.RootElement;
+    }
 
-    bool TryGet(string path, out JsonElement value);
-    IEnumerable<DynamicNode> EnumerateChildren(JsonElement element);
+    public DynamicModel(JsonElement element)
+    {
+        _root = element;
+    }
+
+    public JsonValueKind ValueKind => _root.ValueKind;
+
+    public IEnumerable<string> GetPropertyNames()
+    {
+        if (_root.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in _root.EnumerateObject())
+                yield return prop.Name;
+        }
+    }
+
+    public DynamicModel? GetProperty(string name)
+    {
+        if (_root.ValueKind == JsonValueKind.Object &&
+            _root.TryGetProperty(name, out var value))
+        {
+            return new DynamicModel(value);
+        }
+        return null;
+    }
+
+    public IEnumerable<DynamicModel> GetArrayItems()
+    {
+        if (_root.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in _root.EnumerateArray())
+                yield return new DynamicModel(item);
+        }
+    }
+
+    public string? GetString()
+        => _root.ValueKind == JsonValueKind.String ? _root.GetString() : null;
+
+    public int? GetInt()
+        => _root.ValueKind == JsonValueKind.Number ? _root.GetInt32() : null;
+
+    public JsonElement Raw => _root;
 }
 ```
+## 5. JSON アクセス API（Access API）
 
-### 3.2 DynamicNode（TreeView 用）
+DynamicModel は JSON の構造を動的に探索するための API を提供する。
+
+### ✔ 5.1 プロパティ列挙  
+`GetPropertyNames()`  
+→ JSON オブジェクトのキー一覧を取得
+
+### ✔ 5.2 プロパティ取得  
+`GetProperty(name)`  
+→ 指定キーの DynamicModel を返す
+
+### ✔ 5.3 配列列挙  
+`GetArrayItems()`  
+→ JSON 配列の各要素を DynamicModel として返す
+
+### ✔ 5.4 値取得  
+`GetString()` / `GetInt()`  
+→ JSON のプリミティブ値を取得
+
+### ✔ 5.5 Raw JSON  
+`Raw`  
+→ JsonElement をそのまま返す
+
+---
+
+## 6. NodeFactory との関係（Integration with NodeFactory）
+
+DynamicModel は NodeFactory のためのデータソースである。
+
+NodeFactory は DynamicModel を使って DynamicNode を構築する：
 
 ```csharp
-class DynamicNode
+var model = new DynamicModel(jsonDocument);
+var node = NodeFactory.BuildFromModel(model);
+```
+
+NodeFactory 内では：
+
+```csharp
+foreach (var prop in model.GetPropertyNames())
 {
-    string Name { get; set; }
-    string? Value { get; set; }
-    string Path { get; set; }
-    List<DynamicNode> Children { get; set; }
+    var childModel = model.GetProperty(prop);
+    var childNode = BuildFromModel(childModel);
+    parent.Children.Add(childNode);
 }
 ```
-## 4. 機能要件
-### 4.1 JSON の種類判定
-DynamicModel は JsonElement の種類を判定できる必要がある：
 
-Object
+DynamicModel は **構造を提供するだけ**であり、  
+ノード分類（Document / Packages / Files など）は NodeFactory の責務。
 
-Array
+---
 
-Primitive（string, number, bool, null）
+## 7. UI との関係（UI Independence）
 
-### 4.2 パスアクセス
-任意のパスで JSON にアクセスできる：
+DynamicModel は UI とは完全に独立している。
 
-例：
+- TreeView の表示制御  
+- 右ペインの表示モード  
+- ノードの表示／非表示  
 
-packages[0].SPDXID
+これらは **SbomUiConfig + Converter + ViewModel** が担当する。
 
-files[2].checksums[1].algorithm
+DynamicModel は UI のために構造を変形しない。
 
-documentNamespace
+---
 
-### 4.3 子要素の列挙（TreeView 用）
-DynamicModel は JsonElement の子要素を列挙し、
-DynamicNode のリストとして返す。
+## 8. 将来拡張（Future Extensions）
 
-### 4.4 JSON のパス生成
-TreeView のノードをクリックしたときに
-元の JSON の位置を特定するため、
-各 DynamicNode は JSON 内のパスを保持する。
+DynamicModel は以下の拡張を想定している。
 
-## 5. Node 生成ロジック
-### 5.1 Object の場合
-コード
-{
-  "name": "example",
-  "version": "1.0",
-  "annotations": [ ... ]
-}
-→ 子ノードは各プロパティ名
+- JSON Schema（spdx-schema-2-3.json）との比較  
+- Missing / Unknown チェックの強化  
+- Raw JSON の差分表示  
+- JSON Pointer の生成  
+- SPDX 3.0 / 3.1 への対応  
+- vendor extension の自動検出  
 
-### 5.2 Array の場合
-コード
-"packages": [
-  { ... },
-  { ... }
-]
-→ 子ノードは [0], [1] のようなインデックス
+---
 
-### 5.3 Primitive の場合
-コード
-"SPDXID": "SPDXRef-Package"
-→ Value に格納し、Children は空
+# 🎉 まとめ
 
-### 5.4 TreeView のトップ構造（SBOM ノード）
-SBOMCraft の TreeView は、SPDX JSON の構造をそのまま表示するのではなく、
-ユーザーが理解しやすい論理構造に再編成して表示する。
+DynamicModel は SBOMCraft2 の「構造レイヤー」であり：
 
-トップノードは固定で “SBOM” とする
-```
-コード
-SBOM
- ├─ Document
- ├─ Packages
- ├─ Files
- └─ Relationships
-```
-Document は JSON の root properties をまとめたノード
+- vendor extension を保持  
+- requirements.json のチェックに利用  
+- Raw JSON を保持  
+- NodeFactory に構造を提供  
+- UI とは完全に独立  
 
-SPDX JSON のルートにある以下のようなフィールド：
-
-SPDXID
-
-name
-
-spdxVersion
-
-documentNamespace
-
-creationInfo
-
-…など
-
-これらを Document ノードの子としてまとめる。
-
-Packages / Files / Relationships は JSON の array をそのまま展開
-例：
-```
-Packages
- ├─ [0]
- │    ├─ SPDXID
- │    ├─ name
- │    └─ ...
- └─ [1]
-```
-この構造は DynamicNode の生成ロジックで決定する
-
-DynamicModel は JSON の構造を提供するだけで、
-TreeView の構造（どこをトップにするか）は DynamicNode が決める。
-
-## 6. DynamicModel の API 詳細
-### 6.1 TryGet
-```
-bool TryGet(string path, out JsonElement value)
-```
-. で object のプロパティを辿る
-
-[n] で array の要素を辿る
-
-存在しない場合は false
-
-### 6.2 EnumerateChildren
-コード
-IEnumerable<DynamicNode> EnumerateChildren(JsonElement element)
-Object → properties を列挙
-
-Array → index を列挙
-
-Primitive → 子なし
-
-## 7. TreeView との連携
-DynamicNode は WPF の TreeView にそのままバインドできる：
-
-xml
-<TreeView ItemsSource="{Binding RootNodes}">
-    <TreeView.ItemTemplate>
-        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-            <TextBlock Text="{Binding Name}" />
-        </HierarchicalDataTemplate>
-    </TreeView.ItemTemplate>
-</TreeView>
-
-
-## 8. SchemaLoader との連携
-DynamicModel は SchemaLoader のフィールド一覧と照合し：
-
-- Schema にある → JSON に無い → Missing
-
-- JSON にある → Schema に無い → Unknown
-
-両方にある → OK
-
-というチェックが可能。
-
-
-### 8.1 Unknown Fields（スキーマに存在しない項目）の扱い
-DynamicModel が列挙した JSON のフィールドが、
-SchemaLoader が保持するフィールド一覧に存在しない場合、
-そのフィールドは Unknown Field として扱う。
-
-Unknown Field は TreeView 上で以下のように表示する：
-
-```
-(Unknown) フィールド名
-```
-例：
-
-```
-Document
- ├─ SPDXID
- ├─ name
- ├─ (Unknown) myCompany:extraField
- └─ creationInfo
-```
-Unknown Fields の目的：
-
-- vendor extension（独自フィールド）を可視化する
-- スキーマに無い項目をユーザーに知らせる
-- モデル拡張の判断材料にする
-- requirements.json のチェック対象に含める
-
-Unknown Fields の判定は以下の 2 つの情報を使う：
-
-- DynamicModel → JSON の実データ
-- SchemaLoader → スキーマのフィールド一覧
-
-DynamicNode は Unknown を視覚的に区別できるように
-IsUnknown フラグを持つことができる。
-
-## 9. 将来拡張
-- SPDX 3.0 対応
-- JSON 編集機能
-- ノードの検索
-- ノードの折りたたみ状態の保持
-- JSON の差分表示
-- requirements.json の自動修正
-
-## 10. まとめ
-DynamicModel は SBOMCraft の中核であり：
-- JSON の脳
-- TreeView の土台
-- requirements チェックの基盤
-- 将来の SPDX バージョンにも耐える柔軟な設計
-
-として機能する。
+という **明確な責務分離**を持つ。
