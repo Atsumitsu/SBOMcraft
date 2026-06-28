@@ -171,3 +171,56 @@ DynamicNode は SBOMCraft2 の「構造モデル」であり：
 - UI とは完全に独立  
 
 という **明確な責務分離**を持つ。
+
+-------
+### 1. NodeType の拡張  
+DynamicNode.md に以下を追加：
+
+```
+NodeType は JSON の構造と SPDX のセクションに応じて自動付与される。
+
+- Document
+- Packages / PackageItem
+- Files / FileItem
+- Relationships / RelationshipItem
+- ExtractedLicenses / ExtractedLicenseItem
+- Object
+- Array
+- Value
+- Unknown
+```
+
+### 2. NodeCategory の追加  
+DynamicNode.md に以下を追加：
+
+```
+NodeCategory は NodeType を抽象化した分類であり、UI 表示ロジックは NodeCategory に基づいて動作する。
+
+- Document
+- Container（Object / Array / Packages / Files / Relationships / ExtractedLicenses）
+- Item（PackageItem / FileItem / RelationshipItem / ExtractedLicenseItem）
+- Value
+- Unknown
+```
+
+### 3. NodeFactory が NodeType を自動判定する  
+DynamicNode.md に以下を追加：
+
+```
+NodeFactory は JSON のキー名に基づき NodeType を自動判定する。
+
+例：
+- "packages" → Packages
+- "files" → Files
+- "relationships" → Relationships
+- "hasExtractedLicensingInfos" → ExtractedLicenses
+```
+
+### 4. LazyChildrenFactory の説明を強化  
+DynamicNode.md に以下を追加：
+
+```
+DynamicNode.Children は初期状態では空であり、LazyChildrenFactory により必要になったときに生成される。
+
+UI 側で子ノードを使用する前に必ず GenerateChildren() を呼び出す必要がある。
+
