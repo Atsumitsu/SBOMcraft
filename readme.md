@@ -45,7 +45,7 @@ C#で開発されていた旧バージョンから設計を根本から見直し
 配布されるZIPファイル内は以下の構成になっています。
 
 ```text
-📦 sbom_viewer_v0.4.0.0.zip
+📦 SBOMcraft
  ┣ 📄 SPDX_SBOM_Viewer.exe (アプリ本体)
  ┣ 📄 SBOMCraft2-512.png   (Aboutダイアログ表示等に使用する画像)
  ┣ 📄 LICENSE.txt          (MITライセンスの全文テキスト)
