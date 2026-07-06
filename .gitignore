@@ -1,0 +1,29 @@
+*.spec
+
+# Pythonのキャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 仮想環境（Virtual Environments）
+.venv/
+venv/
+ENV/
+env/
+
+# VS Codeの設定（個人設定やキャッシュ）
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# 環境変数（認証情報などが含まれるためGitに入れない）
+.env
+.env.local
+
+# 外部ライブラリのインストールリスト（必要に応じて）
+# requirements.txt 自体は Git に含めますが、配布用ビルドなどは除外します
+dist/
+build/
+*.egg-info/
