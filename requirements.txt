@@ -1,0 +1,9 @@
+# GUI Framework
+PySide6>=6.6.0
+
+# SPDX Official Tools & Models
+ntia-conformance-checker==5.0.3
+spdx-tools==0.8.5
+
+# License Parsing (Required by spdx-tools / ntia-checker)
+license-expression>=30.0.0

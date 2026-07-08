@@ -1,0 +1,3 @@
+VERSION = "0.5.1.0"
+RELEASE_DATE = "2026.07"
+COPYRIGHT = "Copyright (c) 2026 XZ Manj"

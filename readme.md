@@ -1,7 +1,7 @@
 markdown
-# 📦 SBOMcraft - SBOM Viewer (Python/PySide6 Edition)
+# 📦 SBOMcraft (Python/PySide6 Edition)
 
-**Version 0.5.0.0 (Beta)**
+**Version 0.5.1.0 (Beta)**
 Developed by XZ Manj
 
 ---
@@ -57,7 +57,7 @@ C#で開発されていた旧バージョンから設計を根本から見直し
 
 ## ⚠️ 注意事項・制限事項
 
-* 本バージョン（v0.5.0.0）は**ベータ版**です。
+* 本バージョンは**ベータ版**です。
 * **「読み込み専用」ツールです:**
 本アプリはSBOMファイルを「可視化・検証」するための閲覧専用ビューアです。本アプリ上でコンポーネントの情報を編集したり、新しいSBOMをゼロから自動生成する機能は現在含まれていません。
 * **初回起動時の警告について:**

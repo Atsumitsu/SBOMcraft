@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, 
     QPushButton, QApplication, QMessageBox, QLabel, QWidget
 )
+from core import VERSION, RELEASE_DATE, COPYRIGHT
 
 class FullTextDialog(QDialog):
     """長文のテキストを大画面でスクロール表示・コピーするためのダイアログ"""
@@ -79,10 +80,11 @@ class AboutDialog(QDialog):
         header_layout.addWidget(icon_label)
 
         # 2. アプリ名とバージョン情報のテキスト
+ # ★【修正】ハードコードをやめ、インポートした変数を埋め込むように変更
         title_label = QLabel(
             "<div style='margin-top: 5px;'>"
             "<h2 style='margin: 0; color: #2c3e50;'>SBOMcraft</h2>"
-            "<p style='margin: 4px 0 0 0; color: #555;'><b>Version:</b> 0.5.0.0 (2026.07)</p>"
+            f"<p style='margin: 4px 0 0 0; color: #555;'><b>Version:</b> {VERSION} ({RELEASE_DATE})</p>"
             "</div>"
         )
         header_layout.addWidget(title_label, 1) # 1を指定して右側のスペースを引き伸ばす
@@ -98,7 +100,7 @@ class AboutDialog(QDialog):
         about_html = """
         <h3>📄 Software License</h3>
                 <p><b>SPDX-License-Identifier:</b> <a href="https://spdx.org/licenses/MIT.html">MIT</a></p>
-                <p>Copyright (c) 2026 XZ Manj</p>
+                <p>[COPYRIGHT_TEXT]</p>
                 
         <hr>
         <h3>📦 Third-Party Licenses & Acknowledgements</h3>
@@ -112,32 +114,38 @@ class AboutDialog(QDialog):
             </li>
             <li>
                 <b>Python</b><br>
-                ver:3.13</br>
+                ver:3.13<br>
                 License: PSF-2.0<br>
             </li>
             <li>
                 <b>ntia-conformance-checker (SPDX Official Tool)</b><br>
-                Version: 5.0.3</br>
+                Version: 5.0.3<br>
                 License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
                 URL:<a href="https://github.com/spdx/ntia-conformance-checker">https://github.com/spdx/ntia-conformance-checker</a><br>
                 Developed by the SPDX Community. Special thanks to their contributors for enabling strict NTIA and CISA (fsct3-min) conformance checking via their official Python APIs.<br>
             </li>
             <li>
                 <b>spdx-tools (SPDX Official Tool)</b><br>
-                Version: 0.8.5</br>
+                Version: 0.8.5<br>
                 License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
             </li>
             <li>
                 <b>spdx-python-model (SPDX Official Tool)</b><br>
-                Version: 0.0.4</br>
+                Version: 0.0.4<br>
                 License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
             </li>
         </ul>        
         <p style="font-size: 11px; color: #666; margin-top: 15px;">
         All other registered trademarks and copyrights are the property of their respective owners.
-        </p>        """
-        info_browser.setHtml(about_html)
+        </p>
+        """
+    # HTML内の特定の文字列 [COPYRIGHT_TEXT] を一元管理の変数に置き換える
+        final_html = about_html.replace("[COPYRIGHT_TEXT]", COPYRIGHT)
+        info_browser.setHtml(final_html)
         layout.addWidget(info_browser)
+
+ #       info_browser.setHtml(about_html)
+ #       layout.addWidget(info_browser)
 
         # -------------------------------------------------------------
         # フッターエリア（閉じるボタン）
