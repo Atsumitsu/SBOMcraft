@@ -1,107 +1,106 @@
-# 📋 SBOM 適合性検証ルール仕様書 (NTIA / CISA)
+# SBOM 適合性検証ルール仕様書  
+**NTIA / CISA 2025 対応（core_validator.py 準拠版）**
 
-本ドキュメントは、本ソフトウェアに実装されている **NTIA最小要件（NTIA Minimum Elements）** および **CISA推奨要件（CISA Recommended Elements）** に対する適合性検証ルールの詳細仕様を定義したものです。
+本ドキュメントは、本ソフトウェアに実装されている **NTIA 最小要件** および  
+**CISA 2025 最小要件（11項目）** に基づく SBOM 適合性検証ロジックの仕様をまとめたものです。
 
----
+内容は `core_validator.py` の実装に完全準拠しています。
 
-## ⚖️ 1. 検証規格（プロファイル）の概要
 
-本システムでは、検証対象の標準規格として以下の2つのプロファイルをサポートしています。
+## 1. 検証プロファイル
 
 | プロファイル | 概要 | 主なチェック対象 |
 | --- | --- | --- |
-| **NTIA** | 米国電気通信情報庁が定義する、SBOMに必須とされる最小限の構成要素。 | 基本的なコンポーネント識別情報（名前、バージョン、提供者など） |
-| **CISA** | 米国土安全保障省サイバーセキュリティ・インフラセキュリティ庁が推奨する、脆弱性管理や改ざん検知まで見据えたより高度な構成要素。 | NTIA要件に加え、ドキュメントメタデータ（作成者、ツール名、タイムスタンプなど）、パッケージ識別子（purl/CPE）、依存関係、ハッシュ・ライセンスの確認。 |
-
----
-
-## 🔍 2. 具体的な検証ルールと重要度判定基準
-
-検証エンジン（Custom）が各パッケージおよびSBOM全体に対して走査するチェック項目と、不備検出時の判定基準（Error / Warning）は以下の通りです。
-
-### ① NTIA / CISA 共通要件（基本コンポーネント情報）
-
-コンポーネント（パッケージ）ごとに以下の項目をチェックします。これらはプロファイルに関わらず必須の項目です。
-
-* **コンポーネント名 (Name) `[Error]`**
-* **判定条件**: 各パッケージ要素内に `"name"` キーが存在しない、または空である場合。
+| **NTIA** | NTIA Minimum Elements に基づく最小限の SBOM 要素 | Name / Version / Supplier / Originator |
+| **CISA** | CISA 2025 最小要件（11項目）に基づく高度な検証 | NTIA 要件＋メタデータ＋識別子＋ハッシュ＋ライセンス＋依存関係＋生成コンテキスト |
 
 
-* **検出時のエラー表記**: `Name欠落`
+## 2. Custom 高速エンジンの検証ルール（コード準拠）
 
+### 2.1 NTIA / CISA 共通（パッケージ基本情報）
 
-
-* **バージョン情報 (Version)** `[Error]`
-
-* **判定条件**: 各パッケージ要素内に `"versionInfo"` キーが存在しない、または空である場合。
-
-
-* **検出時のエラー表記**: `Version欠落`
-
-* **作成者/提供者 (Supplier/Originator)** `[Error]`
-
-* **判定条件**: `"supplier"` キーおよび `"originator"` キーの両方に、未特定を示す `"NOASSERTION"` という文字列が含まれているか、または値自体が存在しない場合。誰が作成したソフトウェアであるか完全に不明となるため、CISAプロファイルにおいても救済（Warning化）せず**厳格なエラー**とします。
-
-
-* **検出時のエラー表記**: `識別子(Supplier/Originator)欠落`
-
-
-
----
-
-### ② CISA 追加推奨要件（高度なセキュリティ・知財・メタデータ情報）
-
-プロファイルで **CISA** が選択された場合のみ、上記①に加えて以下のドキュメント全体およびパッケージ単位の拡張チェックが走ります。実務上の誤検知を防ぐため、一部の `NOASSERTION` 項目は「Warning（警告）」として処理し、適合判定自体はパスできるように調整されています。
-
-#### A. ドキュメント全体（メタデータ）の検証項目
-
-| CISA要件項目 | 判定区分 | 判定条件・仕様 | 検出時のエラー表記 |
+| 項目 | 判定 | 判定条件 | エラー表記 |
 | --- | --- | --- | --- |
-| **A. SBOM作成者 (Author)** | **`Error`** | `"creationInfo"."creators"` 配列内に `"Person:"` または `"Organization:"` の指定が1件もない場合。 | `A. SBOM作成者 (Author) の指定がありません。`<br> |
-| **I. 生成ツール名 (Tool Name)** | **`Error`** | `"creationInfo"."creators"` 配列内に `"Tool:"` の指定が1件もない場合。 | `I. 生成ツールの名称 (Tool Name) の指定がありません。`<br> |
-| **J. タイムスタンプ (Timestamp)** | **`Error`** | `"creationInfo"."created"` フィールド（ISO 8601形式）が存在しない、または空の場合。 | `J. タイムスタンプ (Timestamp) の指定がありません。`<br> |
+| **Name** | Error | `"name"` が空または存在しない | `Name欠落` |
+| **VersionInfo** | Error | `"versionInfo"` が空または存在しない | `Version欠落` |
+| **Supplier / Originator** | Error | 両方が `"NOASSERTION"` または不在 | `識別子(Supplier/Originator)欠落` |
 
-#### B. パッケージ単位・全体構造の検証項目
 
-| CISA要件項目 | 判定区分 | 判定条件・仕様 | 検出時のエラー表記 |
+## 3. CISA 追加要件（11項目）
+
+CISA プロファイル選択時のみ適用。
+
+
+## 3.1 ドキュメントメタデータ検証（creationInfo / comment）
+
+| CISA項目 | 判定 | 判定条件 | エラー表記 |
 | --- | --- | --- | --- |
-| **E. ソフトウェア識別子 (Identifiers)** | **`Error`** | 各パッケージ内の `"externalRefs"` を走査し、`purl`, `cpe22Type`, `cpe23Type` などの国際識別規格、あるいは `SECURITY`, `PACKAGE-MANAGER` カテゴリの定義が1件も含まれていない場合。 | `ソフトウェア識別子(purl/CPE)欠落`<br> |
-| **F. ハッシュ値 (Hashes)** | **`Warning`** | `"checksums"` 配列が存在しない、または空の場合。実務上、メタパッケージや仮想グループなどハッシュを算出できない要素を考慮し、**警告（適合パス）**として扱います。 | `Hash未記載(NOASSERTION等)`<br> |
-| **G. ライセンス情報 (License)** | **`Warning`** | 決定ライセンス（`"licenseConcluded"`）および宣言ライセンス（`"licenseDeclared"`）の双方が `"NOASSERTION"` または不在の場合。OSS依存関係の末端等で頻発するため、**警告（適合パス）**として扱います。 | `License未明記(NOASSERTION)`<br> |
-| **K. 生成コンテキスト (Context)** | **`Warning`** | SPDX 2.3で直接の対応フィールドがないため、ドキュメントルートの `"comment"` 欄に記載がない場合に注意喚起（警告）を促します。 | `生成コンテキスト (Context) 未記載` |
-| **H. 依存関係の明記 (Relationships)** | **`Error`** | SBOMファイル全体のルートにある `"relationships"` 配列のデータ件数が **0件** である場合（コンポーネント間のつながり・依存木が完全に不明瞭と判定）。 | `relationships フィールドが空、または依存関係が記述されていません。`<br> |
+| **Author** | Error | creators に `"Person:"` または `"Organization:"` が存在しない | `SBOM作成者の指定がありません` |
+| **Tool Name / Version** | Error | `"Tool:"` が存在しない、または Tool 名に記号・数字が含まれない | `生成ツール名またはバージョン情報がありません` |
+| **Timestamp** | Error | `"creationInfo"."created"` が空または不在 | `タイムスタンプがありません` |
+| **Generation Context** | Error | comment または creators に `source`, `build`, `run`, `deploy` などの文脈キーワードが存在しない | `生成コンテキストが記述されていません` |
+
+
+## 3.2 パッケージ単位の検証
+
+| CISA項目 | 判定 | 判定条件 | エラー表記 |
+| --- | --- | --- | --- |
+| **Hashes** | Error | `"checksums"` が空または不在 | `Hash未記載(CISA必須要件不適合)` |
+| **License** | Warning | `"licenseConcluded"` と `"licenseDeclared"` が両方 `"NOASSERTION"` | `License未明記(NOASSERTION)` |
+| **Identifiers (purl/CPE)** | Error | externalRefs に purl / cpe22Type / cpe23Type / SECURITY / PACKAGE-MANAGER が存在しない | `ソフトウェア識別子(purl/CPE)欠落` |
+
+
+## 3.3 SBOM 全体構造の検証
+
+| CISA項目 | 判定 | 判定条件 | エラー表記 |
+| --- | --- | --- | --- |
+| **Relationships** | Error | `"relationships"` が 0 件 | `relationships フィールドが空です` |
+
+
+## 4. Custom 高速エンジンの特性
+
+### ✔ CISA 11項目に完全対応  
+`core_validator.py` のロジックは CISA 2025 の 11項目すべてを網羅。
+
+### ✔ NOASSERTION の扱い
+
+| 項目 | 判定 |
+| --- | --- |
+| Supplier / Originator | **Error** |
+| Hash | **Error** |
+| License | **Warning（適合パス）** |
+
+### ✔ Generation Context  
+旧仕様では Warning → **コードでは Error に格上げ**
+
+### ✔ Tool 名の判定ロジック  
+`Tool:` の後ろに **数字または記号（-, _, /, space）** が含まれない場合、  
+バージョン情報なしとみなし **Error**。
+
+
+## 5. SPDX Official エンジン（補足）
+
+- SPDXコミュニティが開発・提供する公式の `ntia-conformance-checker` ライブラリを利用
+- NTIA → 標準チェック  
+- CISA → `(file_path, True, 'fsct3-min')` を指定  
+- NOASSERTION → **すべて不適合扱い**  
+- 巨大 SBOM → 処理が重い  
+
+
+## 6. 旧仕様からの変更点（差分）
+
+| 項目 | 旧仕様 | 新仕様（コード準拠） |
+| --- | --- | --- |
+| Hash の判定 | Warning | **Error** |
+| Generation Context | Warning | **Error** |
+| Tool 名の判定 | `"Tool:" があればOK` | **記号 or 数字が含まれないと Error** |
+| Author の判定 | Person/Organization が必要 | 変更なし |
+| License の判定 | Warning | 変更なし |
+
 
 ---
+このドキュメントは `core_validator.py` の実装内容と完全に一致するように調整されています。
 
-## ⚙️ 3. 検証エンジンによる動作の違い
-
-ユーザーは検証の実行にあたり、処理性能や目的別に2つのエンジンを選択可能です。
-
-### A. SPDX Official エンジン
-
-SPDXコミュニティが開発・提供する公式の `ntia-conformance-checker` ライブラリを内部で呼び出します。
-
-* **NTIA プロファイル選択時**: 標準的な公式NTIAバリデーションを実行。
-
-
-* **CISA プロファイル選択時**: チェッカー呼び出し時に厳密検証フラグおよびプロファイル名として `(file_path, True, 'fsct3-min')` を指定し、公式基準のCISA/Framework向け厳格バリデーションを実行。
-
-
-* **特性**: 厳密で公式準拠のHTMLレポートを出力しますが、10MBを超える巨大なSBOMファイルに対しては解析処理に著しく時間を要する（または応答しなくなる）制限があります。また、`NOASSERTION` も一律で不適合（非準拠）となるため、市販ツールで生成した現実のSBOMを通しにくい特性があります。
-
-
-
-### B. Custom 高速エンジン
-
-本ソフトウェア独自に実装された、高速な辞書走査アルゴリズムによる実務特化型の検証エンジンです。
-
-* **特性**: 100MB〜200MBクラスの超巨大なSBOMファイル（数十万件のパッケージ群）であっても、システムをフリーズさせることなく**わずか数秒**で適合性スキャンを完了します。
-
-
-* **重要度ハンドリング**: 今回のアップデートにより、実務上避けられない `NOASSERTION`（ハッシュやライセンスの一部未特定）を「Error（不適合）」から「Warning（適合パス・警告）」へと格下げ判定するインテリジェントなロジックを実装。適合性を担保しつつ、運用のノイズ（誤検知）を最小化します。
-
-
-* **UI連携**: 不備が検出されたパッケージのインデックス（`index`）を正確に特定します。エラー（Error）のパッケージは赤色、警告（Warning）のパッケージはオレンジ色で分別され、メイン画面のレポートやツリービューにわかりやすくハイライト強調されます。
 
 
 

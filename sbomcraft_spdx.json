@@ -1,0 +1,143 @@
+{
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-5.2.0.0-c4ce9c74-9120-43c7-84a7-9db43a53b1a0",
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "SBOMcraft",
+  "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
+  "creationInfo": {
+    "created": "2026-07-10T09:32:32Z",
+    "creators": [
+      "Person: XZ Manj",
+      "Tool: Custom-Python-SBOM-Generator-1.0"
+    ]
+  },
+  "packages": [
+    {
+      "name": "SBOMcraft",
+      "SPDXID": "SPDXRef-RootPackage",
+      "versionInfo": "5.2.0.0",
+      "supplier": "Person: XZ Manj",
+      "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) 2026 XZ Manj. All rights reserved.",
+      "summary": "Root application container for the project",
+      "comment": "Generation Context: Deployed",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "727a0dfbf484d5690e14e5e7ae655f98a7bd66bb6115c6798239cf70b3905df7"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:generic/sbomcraft@5.2.0.0"
+        }
+      ]
+    },
+    {
+      "name": "PySide6",
+      "SPDXID": "SPDXRef-Package-PySide6",
+      "versionInfo": "6.11.1",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "NOASSERTION",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6@6.11.1"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "a805ff91949c408b23ab8abec2872c628f7c2292ec638b968c8ebe26dd88a5de"
+        }
+      ]
+    },
+    {
+      "name": "ijson",
+      "SPDXID": "SPDXRef-Package-ijson",
+      "versionInfo": "3.5.0",
+      "supplier": "Organization: Rodrigo Tobar",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "BSD-3-Clause AND ISC",
+      "licenseDeclared": "BSD-3-Clause AND ISC",
+      "copyrightText": "NOASSERTION",
+      "summary": "Iterative JSON parser with standard Python iterator interfaces",
+      "homepage": "https://github.com/ICRAR/ijson",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/ijson@3.5.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "14958e8648c6395b4cee5b08e4fc3f3b5e9656d58606ee9b539c341a5ae6dd3f"
+        }
+      ]
+    },
+    {
+      "name": "ntia_conformance_checker",
+      "SPDXID": "SPDXRef-Package-ntia-conformance-checker",
+      "versionInfo": "5.0.3",
+      "supplier": "Organization: Josh Lin",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "summary": "Check SPDX SBOM for NTIA minimum elements and CISA baseline attributes",
+      "homepage": "https://github.com/spdx/ntia-conformance-checker",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/ntia_conformance_checker@5.0.3"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3226fef0c6afb2366749220f9b56ce23dac6952a1e4bcebc6ad77b38c75ea2d0"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-RootPackage"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-ijson"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-ntia-conformance-checker"
+    }
+  ]
+}

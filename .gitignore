@@ -2,7 +2,7 @@
 file_version_info.txt
 build.bat
 clean_sbom.py
-*.json
+#*.json
 
 # Pythonのキャッシュ
 __pycache__/
