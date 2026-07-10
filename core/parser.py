@@ -44,14 +44,13 @@ class ParseWorker(QObject):
             # 1. ファイルサイズの取得（進捗率計算用）
             file_size = os.path.getsize(self.filepath)
             if file_size == 0:
-                raise ValueError("ファイルが空です。")
+                 raise ValueError("ファイルが空です。")
 
-            root = SBOMNode(name="ℹ️ SPDX Document", node_type="document")
+            root = SBOMNode(name="📒 DocumentRoot", node_type="document")
             doc_info_node = SBOMNode(name="ℹ️ Document Information", node_type="document_info")
             packages_folder = SBOMNode(name="📁 Packages", node_type="category_folder")
             files_folder = SBOMNode(name="📁 Files", node_type="category_folder")
             relations_folder = SBOMNode(name="📁 Relationships", node_type="category_folder")
-            # 【新設】要望通りの表示名でフォルダを作成
             licenses_folder = SBOMNode(name="📁 ExtractedLicense", node_type="category_folder")
 
             package_map: Dict[str, SBOMNode] = {}
@@ -66,6 +65,7 @@ class ParseWorker(QObject):
                 for k, v in items:
                     # ユーザーがキャンセルボタンを押していたら処理を即中断
                     if self._is_canceled:
+                        self.finished.emit(None) # メインスレッド側に中断（結果なし）を通知
                         return
 
                     # 進行状況の計算と通知（100ループに1回通知してUI負荷を軽減）
@@ -76,20 +76,21 @@ class ParseWorker(QObject):
                         self.progress.emit(min(current_percent, 99)) # 完了時以外は99%で止める
 
                     # --- パースロジック ---
-                    # 【修正】'hasExtractedLicensingInfos' は一括処理から除外し、elif で安全に個別処理する
+                    # 【修正】'comment' を対象フィールドに追加
                     if k in ('SPDXID', 'name', 'spdxVersion', 'creationInfo', 
-                             'dataLicense', 'documentNamespace', 'documentDescribes'):
+                             'dataLicense', 'documentNamespace', 'documentDescribes', 'comment'):
                         root.properties[k] = v
                         doc_info_node.properties[k] = v
                         if k == 'name':
-                            root.name = f"📒 DcoumentRoot"
                             doc_info_node.name = f"ℹ️ {v}"
                         elif k == 'SPDXID':
-#                            root.spdx_id = v
                             doc_info_node.spdx_id = v
                         
                     elif k == 'packages':
                         for pkg in v:
+                            if self._is_canceled: # ネスト内でもキャンセルをチェック
+                                self.finished.emit(None)
+                                return
                             pkg_id = pkg.get('SPDXID', '')
                             pkg_name = pkg.get('name', 'Unknown Package')
                             pkg_node = SBOMNode(
@@ -99,9 +100,12 @@ class ParseWorker(QObject):
                                 properties=pkg
                             )
                             packages_folder.append_child(pkg_node)
-                            
+                             
                     elif k == 'files':
                         for file_info in v:
+                            if self._is_canceled:
+                                self.finished.emit(None)
+                                return
                             f_id = file_info.get('SPDXID', '')
                             f_name = file_info.get('fileName', 'Unknown File')
                             f_node = SBOMNode(
@@ -112,16 +116,18 @@ class ParseWorker(QObject):
                             )
                             files_folder.append_child(f_node)
 
-                    # 【新設】フリーズを回避し、Packages と並列の位置に追加するロジック
                     elif k == 'hasExtractedLicensingInfos':
                         for license_info in v:
+                            if self._is_canceled:
+                                self.finished.emit(None)
+                                return
                             l_id = license_info.get('licenseId', '')
                             l_name = license_info.get('name', '(none)')
                             l_node = SBOMNode(
-                                name=f"📜 {l_name}", # 絵文字を巻物にしてみました
+                                name=f"📜 {l_name}",
                                 node_type="licenses",
                                 spdx_id=l_id,
-                                properties=license_info # 右側ペインでJSONが見れるように辞書を丸ごと渡す
+                                properties=license_info
                             )
                             licenses_folder.append_child(l_node)
                             
@@ -130,10 +136,13 @@ class ParseWorker(QObject):
 
                 # リレーションの登録
                 for rel in relationships_raw:
+                    if self._is_canceled:
+                        self.finished.emit(None)
+                        return
                     el_id = rel.get('spdxElementId', 'N/A')
                     rel_id = rel.get('relatedSpdxElement', 'N/A')
                     rel_type = rel.get('relationshipType', 'UNKNOWN')
-                    
+                     
                     rel_node = SBOMNode(
                         name=f"🔗 {el_id} ➔ [{rel_type}] ➔ {rel_id}",
                         node_type="relationship",
@@ -150,7 +159,6 @@ class ParseWorker(QObject):
                 root.append_child(files_folder)
             if relations_folder.child_count() > 0:
                 root.append_child(relations_folder)
-            # 【新設】ライセンスフォルダも他のフォルダと同じ並び（root直下）で結合
             if licenses_folder.child_count() > 0:
                 root.append_child(licenses_folder)
 

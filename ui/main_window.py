@@ -58,7 +58,7 @@ class MainWindow(QMainWindow):
         # CISA サブメニュー
         cisa_menu = validation_menu.addMenu("CISA")
         self.act_cisa_spdx = cisa_menu.addAction("SPDX Official")
-        self.act_cisa_custom = cisa_menu.addAction("Custom")
+        self.act_cisa_custom = cisa_menu.addAction("Custom CISA2025")
 
         # イベント接続
         self.act_ntia_spdx.triggered.connect(lambda: self.trigger_validation("NTIA", "SPDX"))
