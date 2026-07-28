@@ -1,41 +1,41 @@
 {
-  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-5.2.0.0-c4ce9c74-9120-43c7-84a7-9db43a53b1a0",
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.6.0.0-1d8771d2-a233-438b-8c89-239bb0b82209",
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SBOMcraft",
   "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
   "creationInfo": {
-    "created": "2026-07-10T09:32:32Z",
+    "created": "2026-07-28T23:44:01Z",
     "creators": [
       "Person: XZ Manj",
-      "Tool: Custom-Python-SBOM-Generator-1.0"
+      "Tool: py-sbom-mini-1.0.0"
     ]
   },
   "packages": [
     {
       "name": "SBOMcraft",
       "SPDXID": "SPDXRef-RootPackage",
-      "versionInfo": "5.2.0.0",
+      "versionInfo": "0.6.0.0",
       "supplier": "Person: XZ Manj",
       "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
       "filesAnalyzed": false,
-      "licenseConcluded": "MIT",
-      "licenseDeclared": "MIT",
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
       "copyrightText": "Copyright (c) 2026 XZ Manj. All rights reserved.",
       "summary": "Root application container for the project",
       "comment": "Generation Context: Deployed",
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "727a0dfbf484d5690e14e5e7ae655f98a7bd66bb6115c6798239cf70b3905df7"
+          "checksumValue": "e59370798701bdc705dd36b0a5006b0fbebdc9855e3f940e72429a717af7ea05"
         }
       ],
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:generic/sbomcraft@5.2.0.0"
+          "referenceLocator": "pkg:generic/SBOMcraft@6.0.0.0"
         }
       ]
     },
@@ -62,6 +62,32 @@
         {
           "algorithm": "SHA256",
           "checksumValue": "a805ff91949c408b23ab8abec2872c628f7c2292ec638b968c8ebe26dd88a5de"
+        }
+      ]
+    },
+    {
+      "name": "cyclonedx-python-lib",
+      "SPDXID": "SPDXRef-Package-cyclonedx-python-lib",
+      "versionInfo": "11.11.0",
+      "supplier": "Organization: Paul Horton",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "summary": "Python library for CycloneDX",
+      "homepage": "https://github.com/CycloneDX/cyclonedx-python-lib/#readme",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/cyclonedx-python-lib@11.11.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "d30bb30bb3c936ccf5becf8ee7159d4ae8ade613d5dde78c78c828e97f931596"
         }
       ]
     },
@@ -116,6 +142,32 @@
           "checksumValue": "3226fef0c6afb2366749220f9b56ce23dac6952a1e4bcebc6ad77b38c75ea2d0"
         }
       ]
+    },
+    {
+      "name": "packageurl-python",
+      "SPDXID": "SPDXRef-Package-packageurl-python",
+      "versionInfo": "0.17.6",
+      "supplier": "Organization: the purl authors",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "NOASSERTION",
+      "summary": "A purl aka. Package URL parser and builder",
+      "homepage": "https://github.com/package-url/packageurl-python",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
+        }
+      ]
     }
   ],
   "relationships": [
@@ -132,12 +184,22 @@
     {
       "spdxElementId": "SPDXRef-RootPackage",
       "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-cyclonedx-python-lib"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-ijson"
     },
     {
       "spdxElementId": "SPDXRef-RootPackage",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-ntia-conformance-checker"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
     }
   ]
 }

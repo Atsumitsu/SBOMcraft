@@ -1,5 +1,5 @@
 # core/parser.py
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 XZ Manj
 
 import ijson
@@ -48,9 +48,9 @@ class ParseWorker(QObject):
 
             root = SBOMNode(name="📒 DocumentRoot", node_type="document")
             doc_info_node = SBOMNode(name="ℹ️ Document Information", node_type="document_info")
-            packages_folder = SBOMNode(name="📁 Packages", node_type="category_folder")
+            packages_folder = SBOMNode(name="📁 Packages", node_type="packages_folder")
             files_folder = SBOMNode(name="📁 Files", node_type="category_folder")
-            relations_folder = SBOMNode(name="📁 Relationships", node_type="category_folder")
+            relations_folder = SBOMNode(name="📁 Relationships", node_type="relations_folder")
             licenses_folder = SBOMNode(name="📁 ExtractedLicense", node_type="category_folder")
 
             package_map: Dict[str, SBOMNode] = {}

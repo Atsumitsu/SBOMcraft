@@ -1,5 +1,5 @@
 # ui/main_window.py
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 XZ Manj
 
 import os
@@ -15,6 +15,7 @@ from core.parser import ParseWorker, SBOMNode
 from core.validator import SBOMValidator
 from ui.detail_panel import DetailPanel
 from ui.dialogs import AboutDialog
+from core.converter import SPDXToCycloneDXConverter
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -65,6 +66,15 @@ class MainWindow(QMainWindow):
         self.act_ntia_custom.triggered.connect(lambda: self.trigger_validation("NTIA", "Custom"))
         self.act_cisa_spdx.triggered.connect(lambda: self.trigger_validation("CISA", "SPDX"))
         self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA", "Custom"))
+
+
+    # --- Converter メニュー ---
+        converter_menu = menu_bar.addMenu("Converter")
+        self.action_export_cdx = converter_menu.addAction("🔄 Export to CycloneDX")
+        self.action_export_cdx.triggered.connect(self.export_to_cyclonedx)
+        
+        # 初期状態ではファイルがないため無効化しておく
+        self.action_export_cdx.setEnabled(False)
 
         # 初期状態では検証メニューを無効化
         self.set_validation_menu_enabled(False)
@@ -132,6 +142,7 @@ class MainWindow(QMainWindow):
         self.act_ntia_custom.setEnabled(enabled)
         self.act_cisa_spdx.setEnabled(enabled)
         self.act_cisa_custom.setEnabled(enabled)
+        self.action_export_cdx.setEnabled(enabled)
 
     def trigger_validation(self, profile: str, engine: str):
         """メニューが選ばれた時の統合窓口（10MBチェックと警告を行う）"""
@@ -196,7 +207,46 @@ class MainWindow(QMainWindow):
                         pkg_item_id.setBackground(warning_color)
                         if not pkg_item_name.text().startswith("⚠️"):
                             pkg_item_name.setText(f"⚠️ {pkg_item_name.text()} 【{reasons_str}】")
-                            
+
+    def export_to_cyclonedx(self):
+        """現在のSBOMデータをCycloneDX形式に変換して保存する"""
+        if not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            return
+
+        # 保存先ファイルのデフォルト名を提案（元のファイル名 + _cyclonedx.json）
+        default_save_path = os.path.splitext(self.current_file_path)[0] + "_cyclonedx.json"
+        
+        output_cdx_path, _ = QFileDialog.getSaveFileName(
+            self, "Save CycloneDX JSON", default_save_path, "JSON Files (*.json);;All Files (*)"
+        )
+
+        if not output_cdx_path:
+            return  # ユーザーがキャンセルした場合は何もしない
+
+        self.compliance_report.append(f"<br>🔄 CycloneDXへの変換を開始します...<br><font color='gray'>出力先: {output_cdx_path}</font>")
+        self.status_bar.showMessage("Converting to CycloneDX...")
+        QApplication.processEvents()  # UIを一度更新してメッセージを表示
+
+        try:
+            # 1. コンバーターの初期化と実行（メモリ上のノードを渡す）
+            converter = SPDXToCycloneDXConverter()
+            cyclonedx_json_str = converter.convert(self.current_root_node)
+
+            # 2. 結果の書き出し
+            with open(output_cdx_path, "w", encoding="utf-8") as f:
+                f.write(cyclonedx_json_str)
+
+            # 3. 成功時のUI更新
+            self.status_bar.showMessage(f"Successfully exported to {output_cdx_path}")
+            self.compliance_report.append("<font color='green'><b>[SUCCESS]</b> CycloneDXへの変換と保存が完了しました！</font>")
+            QMessageBox.information(self, "Success", "CycloneDX形式への変換・保存が完了しました。")
+
+        except Exception as e:
+            self.status_bar.showMessage("Conversion failed.")
+            self.compliance_report.append(f"<font color='red'><b>[ERROR]</b> 変換失敗: {str(e)}</font>")
+            QMessageBox.critical(self, "Conversion Error", f"変換中にエラーが発生しました:\n{str(e)}")
+
     def restore_window_state(self):
         geometry = self.settings.value("geometry")
         if geometry:

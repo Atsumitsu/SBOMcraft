@@ -47,7 +47,7 @@ SPDX 公式ツールによる NTIA / CISA (fsct3-min) バリデーション機�
 
 ## ライセンス / クレジット
 
-SPDX-License-Identifier: MIT
+SPDX-License-Identifier: Apache-2.0
 
 Developed by XZ Manj
 
