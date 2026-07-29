@@ -50,7 +50,11 @@ class ParseWorker(QObject):
             doc_info_node = SBOMNode(name="ℹ️ Document Information", node_type="document_info")
             packages_folder = SBOMNode(name="📁 Packages", node_type="packages_folder")
             files_folder = SBOMNode(name="📁 Files", node_type="category_folder")
+<<<<<<< HEAD
             relations_folder = SBOMNode(name="📁 Relationships", node_type="relations_folder")
+=======
+            relations_folder = SBOMNode(name="📁 Relationships", node_type="category_folder")
+>>>>>>> af1e97c9afbfe2c9e7d4a4fd9c0042fa08817b2a
             licenses_folder = SBOMNode(name="📁 ExtractedLicense", node_type="category_folder")
 
             package_map: Dict[str, SBOMNode] = {}
