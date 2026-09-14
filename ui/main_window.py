@@ -16,6 +16,7 @@ from core.validator import SBOMValidator
 from ui.detail_panel import DetailPanel
 from ui.dialogs import AboutDialog
 from core.converter import SPDXToCycloneDXConverter
+from core.validator_worker import ValidationWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -28,6 +29,7 @@ class MainWindow(QMainWindow):
         
         self.init_ui()
         self.restore_window_state()
+        self.validator_thread = None
 
     def init_ui(self):
         # -------------------------------------------------------------
@@ -52,20 +54,21 @@ class MainWindow(QMainWindow):
         validation_menu = menu_bar.addMenu("Validation")
 
         # NTIA サブメニュー
-        ntia_menu = validation_menu.addMenu("NTIA")
-        self.act_ntia_spdx = ntia_menu.addAction("SPDX Official")
-        self.act_ntia_custom = ntia_menu.addAction("Custom")
+#        ntia_menu = validation_menu.addMenu("NTIA")
+#        self.act_ntia_spdx = ntia_menu.addAction("SPDX Official")
+#        self.act_ntia_custom = ntia_menu.addAction("Custom")
         
         # CISA サブメニュー
         cisa_menu = validation_menu.addMenu("CISA")
-        self.act_cisa_spdx = cisa_menu.addAction("SPDX Official")
-        self.act_cisa_custom = cisa_menu.addAction("Custom CISA2025")
+#        self.act_cisa_spdx = cisa_menu.addAction("SPDX Official")
+        self.act_cisa_custom = cisa_menu.addAction("Custom CISA2026")
 
         # イベント接続
-        self.act_ntia_spdx.triggered.connect(lambda: self.trigger_validation("NTIA", "SPDX"))
-        self.act_ntia_custom.triggered.connect(lambda: self.trigger_validation("NTIA", "Custom"))
-        self.act_cisa_spdx.triggered.connect(lambda: self.trigger_validation("CISA", "SPDX"))
-        self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA", "Custom"))
+#        self.act_ntia_spdx.triggered.connect(lambda: self.trigger_validation("NTIA", "SPDX"))
+#        self.act_ntia_custom.triggered.connect(lambda: self.trigger_validation("NTIA", "Custom"))
+#        self.act_cisa_spdx.triggered.connect(lambda: self.trigger_validation("CISA", "SPDX"))
+#        self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA2026", "Custom"))
+        self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA2026"))
 
 
     # --- Converter メニュー ---
@@ -138,13 +141,13 @@ class MainWindow(QMainWindow):
 
     def set_validation_menu_enabled(self, enabled: bool):
         """メニューの有効・無効を一括切り替え"""
-        self.act_ntia_spdx.setEnabled(enabled)
-        self.act_ntia_custom.setEnabled(enabled)
-        self.act_cisa_spdx.setEnabled(enabled)
+#        self.act_ntia_spdx.setEnabled(enabled)
+#        self.act_ntia_custom.setEnabled(enabled)
+#        self.act_cisa_spdx.setEnabled(enabled)
         self.act_cisa_custom.setEnabled(enabled)
         self.action_export_cdx.setEnabled(enabled)
 
-    def trigger_validation(self, profile: str, engine: str):
+    def trigger_validation(self, profile: str):
         """メニューが選ばれた時の統合窓口（10MBチェックと警告を行う）"""
         if not self.current_file_path:
             return
@@ -152,37 +155,41 @@ class MainWindow(QMainWindow):
         file_size = os.path.getsize(self.current_file_path)
         limit_10mb = 10 * 1024 * 1024
 
-        if engine == "SPDX" and file_size > limit_10mb:
-            file_size_mb = file_size / (1024 * 1024)
-            
-            reply = QMessageBox.warning(
-                self,
-                "巨大なファイルサイズの警告",
-                f"選択されたファイルは {file_size_mb:.1f} MB あり、10MBを超えています。\n\n"
-                f"SPDX Official（公式ツール）で検証すると、解析に非常に長い時間（数分〜数時間）がかかるか、応答しなくなる恐れがあります。\n\n"
-                f"このまま実行しますか？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.No:
-                self.compliance_report.append(f"<font color='orange'>⚠️ <b>[CANCEL]</b> {profile} ({engine}) の検証はユーザーによりキャンセルされました。爆速な「Custom」エンジンでの検証をおすすめします。</font>")
-                return
+        self.run_compliance_check(profile)
 
-        self.run_compliance_check(profile, engine)
+    def run_compliance_check(self, profile: str):
+        # バックグラウンドスレッド(QThread)を使って非同期で適合性検証を実行する
+        if not self.current_file_path:
+            return
 
-    def run_compliance_check(self, profile: str, engine: str):
-        """指定されたプロファイルとエンジンで検証を実行する"""
+        # 1. コンソール出力エリアの初期化
         self.compliance_report.clear()
-        self.compliance_report.append(f"⏳ 検証を開始しました... [規格: {profile} / エンジン: {engine}]")
-        QApplication.processEvents()
+        self.compliance_report.append(f"⏳ 非同期検証処理を開始しました... [規格: {profile} ]")
 
-        # 【ここを修正】新しくなった check_compliance メソッドを引数付きで呼び出す
-        result = SBOMValidator.check_compliance(self.current_file_path, profile=profile, engine=engine)
-        
-        # 貰ったHTMLレポートをコンソールに表示
+        # 2. 二重実行を防止するためにメニューやボタンを一時無効化（必要に応じて設定）
+        if hasattr(self, 'set_validation_menu_enabled'):
+            self.set_validation_menu_enabled(False)
+
+        # 3. バックグラウンドワーカーのインスタンス化
+        self.validation_worker = ValidationWorker(self.current_file_path, profile=profile)
+
+        # 4. リアルタイム進捗シグナルとUIスロットの接続
+        self.validation_worker.progress_status.connect(self.on_validation_progress)
+        self.validation_worker.finished_report.connect(self.on_validation_finished)
+
+        # 5. バックグラウンド処理の開始
+        self.validation_worker.start()
+
+    def on_validation_progress(self, message: str):
+        """ワーカーから進捗状況（ログ）が送られてくる度にコンソールにリアルタイム追記"""
+        self.compliance_report.append(message)
+        # 自動で最新ログ（最下部）へスクロール
+        self.compliance_report.ensureCursorVisible()
+
+    def on_validation_finished(self, result: dict):
+        """検証完了時に最終HTMLレポートを描画する"""
+        # HTML形式の検証結果レポートをレンダリングして表示
         self.compliance_report.setHtml(result["report_html"])
-
         # エラー箇所を赤く染めるUI処理
         if result["error_packages"]:
             root_item = self.tree_model.item(0, 0)
@@ -207,6 +214,15 @@ class MainWindow(QMainWindow):
                         pkg_item_id.setBackground(warning_color)
                         if not pkg_item_name.text().startswith("⚠️"):
                             pkg_item_name.setText(f"⚠️ {pkg_item_name.text()} 【{reasons_str}】")
+
+        # 無効化していたメニューやボタンの復元
+        if hasattr(self, 'set_validation_menu_enabled'):
+            self.set_validation_menu_enabled(True)
+
+        # メモリ解放・ワーカー参照のクリア
+        self.validation_worker = None
+
+ 
 
     def export_to_cyclonedx(self):
         """現在のSBOMデータをCycloneDX形式に変換して保存する"""

@@ -84,7 +84,7 @@ class AboutDialog(QDialog):
         title_label = QLabel(
             "<div style='margin-top: 5px;'>"
             "<h2 style='margin: 0; color: #2c3e50;'>SBOMcraft</h2>"
-            f"<p style='margin: 4px 0 0 0; color: #555;'><b>Version:</b> {VERSION} ({RELEASE_DATE})</p>"
+            f"<p style='margin: 4px 0 0 0; color: #555;'><b>Version:</b> {VERSION}</p>"
             "</div>"
         )
         header_layout.addWidget(title_label, 1) # 1を指定して右側のスペースを引き伸ばす
@@ -99,7 +99,7 @@ class AboutDialog(QDialog):
         
         about_html = """
         <h3>📄 Software License</h3>
-                <p><b>SPDX-License-Identifier:</b> <a href="https://spdx.org/licenses/MIT.html">MIT</a></p>
+                <p><b>SPDX-License-Identifier:</b> <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a></p>
                 <p>[COPYRIGHT_TEXT]</p>
                 
         <hr>
@@ -118,20 +118,13 @@ class AboutDialog(QDialog):
                 License: PSF-2.0<br>
             </li>
             <li>
-                <b>ntia-conformance-checker (SPDX Official Tool)</b><br>
-                Version: 5.0.3<br>
-                License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
-                URL:<a href="https://github.com/spdx/ntia-conformance-checker">https://github.com/spdx/ntia-conformance-checker</a><br>
-                Developed by the SPDX Community. Special thanks to their contributors for enabling strict NTIA and CISA (fsct3-min) conformance checking via their official Python APIs.<br>
-            </li>
-            <li>
                 <b>spdx-tools (SPDX Official Tool)</b><br>
                 Version: 0.8.5<br>
                 License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
             </li>
             <li>
                 <b>spdx-python-model (SPDX Official Tool)</b><br>
-                Version: 0.0.4<br>
+                Version: 0.0.6<br>
                 License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
             </li>
         </ul>        

@@ -118,32 +118,6 @@
       ]
     },
     {
-      "name": "ntia_conformance_checker",
-      "SPDXID": "SPDXRef-Package-ntia-conformance-checker",
-      "versionInfo": "5.0.3",
-      "supplier": "Organization: Josh Lin",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "Apache-2.0",
-      "licenseDeclared": "Apache-2.0",
-      "copyrightText": "NOASSERTION",
-      "summary": "Check SPDX SBOM for NTIA minimum elements and CISA baseline attributes",
-      "homepage": "https://github.com/spdx/ntia-conformance-checker",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/ntia_conformance_checker@5.0.3"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "3226fef0c6afb2366749220f9b56ce23dac6952a1e4bcebc6ad77b38c75ea2d0"
-        }
-      ]
-    },
-    {
       "name": "packageurl-python",
       "SPDXID": "SPDXRef-Package-packageurl-python",
       "versionInfo": "0.17.6",
