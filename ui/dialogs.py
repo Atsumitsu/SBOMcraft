@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, 
     QPushButton, QApplication, QMessageBox, QLabel, QWidget
 )
-from core import VERSION, RELEASE_DATE, COPYRIGHT
+from core import VERSION, COPYRIGHT
 
 class FullTextDialog(QDialog):
     """長文のテキストを大画面でスクロール表示・コピーするためのダイアログ"""
