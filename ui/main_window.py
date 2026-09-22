@@ -52,26 +52,15 @@ class MainWindow(QMainWindow):
 
         # --- Validation メニュー ---
         validation_menu = menu_bar.addMenu("Validation")
-
-        # NTIA サブメニュー
-#        ntia_menu = validation_menu.addMenu("NTIA")
-#        self.act_ntia_spdx = ntia_menu.addAction("SPDX Official")
-#        self.act_ntia_custom = ntia_menu.addAction("Custom")
         
         # CISA サブメニュー
         cisa_menu = validation_menu.addMenu("CISA")
-#        self.act_cisa_spdx = cisa_menu.addAction("SPDX Official")
         self.act_cisa_custom = cisa_menu.addAction("Custom CISA2026")
 
         # イベント接続
-#        self.act_ntia_spdx.triggered.connect(lambda: self.trigger_validation("NTIA", "SPDX"))
-#        self.act_ntia_custom.triggered.connect(lambda: self.trigger_validation("NTIA", "Custom"))
-#        self.act_cisa_spdx.triggered.connect(lambda: self.trigger_validation("CISA", "SPDX"))
-#        self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA2026", "Custom"))
         self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA2026"))
 
-
-    # --- Converter メニュー ---
+        # --- Converter メニュー ---
         converter_menu = menu_bar.addMenu("Converter")
         self.action_export_cdx = converter_menu.addAction("🔄 Export to CycloneDX")
         self.action_export_cdx.triggered.connect(self.export_to_cyclonedx)
@@ -141,9 +130,6 @@ class MainWindow(QMainWindow):
 
     def set_validation_menu_enabled(self, enabled: bool):
         """メニューの有効・無効を一括切り替え"""
-#        self.act_ntia_spdx.setEnabled(enabled)
-#        self.act_ntia_custom.setEnabled(enabled)
-#        self.act_cisa_spdx.setEnabled(enabled)
         self.act_cisa_custom.setEnabled(enabled)
         self.action_export_cdx.setEnabled(enabled)
 
@@ -154,6 +140,21 @@ class MainWindow(QMainWindow):
 
         file_size = os.path.getsize(self.current_file_path)
         limit_10mb = 10 * 1024 * 1024
+
+        # 10MBを超える場合の警告チェック処理
+        if file_size > limit_10mb:
+            size_mb = file_size / (1024 * 1024)
+            reply = QMessageBox.question(
+                self,
+                "警告: 大容量ファイル",
+                f"ファイルサイズが 10MB を超えています ({size_mb:.2f} MB)。\n"
+                "検証処理に時間がかかる可能性がありますが、実行しますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                self.compliance_report.append("⚠️ ユーザーにより検証処理がキャンセルされました。")
+                return
 
         self.run_compliance_check(profile)
 
@@ -166,7 +167,7 @@ class MainWindow(QMainWindow):
         self.compliance_report.clear()
         self.compliance_report.append(f"⏳ 非同期検証処理を開始しました... [規格: {profile} ]")
 
-        # 2. 二重実行を防止するためにメニューやボタンを一時無効化（必要に応じて設定）
+        # 2. 二重実行を防止するためにメニューやボタンを一時無効化
         if hasattr(self, 'set_validation_menu_enabled'):
             self.set_validation_menu_enabled(False)
 
@@ -191,14 +192,15 @@ class MainWindow(QMainWindow):
         # HTML形式の検証結果レポートをレンダリングして表示
         self.compliance_report.setHtml(result["report_html"])
         # エラー箇所を赤く染めるUI処理
-        if result["error_packages"]:
+        if result.get("error_packages"):
             root_item = self.tree_model.item(0, 0)
             tree_pkg_folder_item = None
-            for row in range(root_item.rowCount()):
-                child_item = root_item.child(row, 0)
-                if "Packages" in child_item.text():
-                    tree_pkg_folder_item = child_item
-                    break
+            if root_item:
+                for row in range(root_item.rowCount()):
+                    child_item = root_item.child(row, 0)
+                    if child_item and "Packages" in child_item.text():
+                        tree_pkg_folder_item = child_item
+                        break
 
             if tree_pkg_folder_item:
                 warning_color = QColor("#FFCCCC")
@@ -221,8 +223,6 @@ class MainWindow(QMainWindow):
 
         # メモリ解放・ワーカー参照のクリア
         self.validation_worker = None
-
- 
 
     def export_to_cyclonedx(self):
         """現在のSBOMデータをCycloneDX形式に変換して保存する"""
@@ -389,4 +389,3 @@ class MainWindow(QMainWindow):
             node = item.data(Qt.ItemDataRole.UserRole)
             if node:
                 self.detail_panel.update_display(node)
-                
