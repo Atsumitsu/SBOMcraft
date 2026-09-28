@@ -168,11 +168,6 @@
     {
       "spdxElementId": "SPDXRef-RootPackage",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-ntia-conformance-checker"
-    },
-    {
-      "spdxElementId": "SPDXRef-RootPackage",
-      "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
     }
   ]

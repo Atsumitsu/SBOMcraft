@@ -8,15 +8,18 @@ from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter, 
     QVBoxLayout, QHBoxLayout, QLabel, QHeaderView, 
-    QStatusBar, QFileDialog, QMessageBox, QApplication
+    QStatusBar, QFileDialog, QMessageBox, QApplication,QDialog
 )
 
 from core.parser import ParseWorker, SBOMNode
 from core.validator import SBOMValidator
 from ui.detail_panel import DetailPanel
 from ui.dialogs import AboutDialog
+from ui.spdx3_dialog import Spdx3ExportDialog
+from core.spdx3_exporter import convert_node_to_spdx3
 from core.converter import SPDXToCycloneDXConverter
 from core.validator_worker import ValidationWorker
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -62,12 +65,15 @@ class MainWindow(QMainWindow):
 
         # --- Converter メニュー ---
         converter_menu = menu_bar.addMenu("Converter")
+        self.action_export_spdx3ld = converter_menu.addAction("🔄 Export to SPDX 3.0 (JSON-LD)")
         self.action_export_cdx = converter_menu.addAction("🔄 Export to CycloneDX")
+        self.action_export_spdx3ld.triggered.connect(self.on_export_spdx3_triggered)
         self.action_export_cdx.triggered.connect(self.export_to_cyclonedx)
         
         # 初期状態ではファイルがないため無効化しておく
         self.action_export_cdx.setEnabled(False)
-
+        self.action_export_spdx3ld.setEnabled(False)
+        
         # 初期状態では検証メニューを無効化
         self.set_validation_menu_enabled(False)
 
@@ -132,6 +138,7 @@ class MainWindow(QMainWindow):
         """メニューの有効・無効を一括切り替え"""
         self.act_cisa_custom.setEnabled(enabled)
         self.action_export_cdx.setEnabled(enabled)
+        self.action_export_spdx3ld.setEnabled(enabled)
 
     def trigger_validation(self, profile: str):
         """メニューが選ばれた時の統合窓口（10MBチェックと警告を行う）"""
@@ -389,3 +396,58 @@ class MainWindow(QMainWindow):
             node = item.data(Qt.ItemDataRole.UserRole)
             if node:
                 self.detail_panel.update_display(node)
+    
+    # v0.6.2.0
+    def on_export_spdx3_triggered(self):
+        """SPDX 3.0 エクスポートダイアログを開き、入力されたメタデータを基に変換・保存を実行する"""
+        # 読み込まれているルートノードが存在するかチェック
+        if not hasattr(self, "current_root_node") or not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "エクスポートするSBOMデータが読み込まれていません。")
+            return
+
+        # 1. ルートノードの properties から既存メタデータを抽出して辞書を構築
+        root_props = getattr(self.current_root_node, "properties", {})
+        creation_info = root_props.get("creationInfo", {})
+        creators = creation_info.get("creators", [])
+
+        existing_meta = {
+            "document_name": root_props.get("name", ""),
+            "creators": creators,
+            "creator": creators[0] if creators else "",
+            "created": creation_info.get("created", ""),
+            "comment": root_props.get("comment", "") or creation_info.get("comment", ""),
+            "sbom_type": root_props.get("sbomType", ["analyzed"])[0] if isinstance(root_props.get("sbomType"), list) else root_props.get("sbomType", "analyzed"),
+            "data_license": root_props.get("dataLicense", "CC0-1.0")
+        }
+
+        # 2. Spdx3ExportDialog を初期化（既存メタデータを渡して初期値を反映させる）
+        dialog = Spdx3ExportDialog(existing_meta=existing_meta, parent=self)
+        
+        if dialog.exec() == Spdx3ExportDialog.Accepted:
+            # 3. ダイアログで入力・編集されたメタデータを取得
+            meta_data = dialog.get_input_data()
+
+            # 4. 保存先ファイルダイアログの表示
+            default_filename = "sbom_spdx3.jsonld"
+            if hasattr(self, "current_file_path") and self.current_file_path:
+                base_name = os.path.splitext(os.path.basename(self.current_file_path))[0]
+                default_filename = f"{base_name}_spdx3.jsonld"
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Save SPDX 3.0 JSON-LD", default_filename, "JSON-LD Files (*.jsonld *.json);;All Files (*)"
+            )
+            
+            if file_path:
+                try:
+                    # 5. エクスポート処理の実行
+                    convert_node_to_spdx3(self.current_root_node, file_path, meta_data=meta_data)
+                    
+                    if hasattr(self, "console"):
+                        self.console.append(f"Successfully exported to SPDX 3.0: {file_path}")
+                    QMessageBox.information(self, "Success", f"SPDX 3.0 へのエクスポートが完了しました:\n{file_path}")
+                    
+                except Exception as e:
+                    error_msg = f"Export failed: {str(e)}"
+                    if hasattr(self, "console"):
+                        self.console.append(error_msg)
+                    QMessageBox.critical(self, "Error", error_msg)

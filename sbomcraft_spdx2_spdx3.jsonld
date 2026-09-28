@@ -1,0 +1,330 @@
+{
+  "@context": "spdx.org",
+  "@graph": [
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "software_Sbom",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-DOCUMENT",
+      "name": "SBOMcraft",
+      "dataLicense": "https://spdx.org/licenses/CC0-1.0",
+      "rootElement": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage"
+      ],
+      "element": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-PySide6",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-cyclonedx-python-lib",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-ijson",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-packageurl-python",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-0",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-1",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-2",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-3",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-4",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-0",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-0",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-1",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-1",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-2",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-2",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-3",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-3",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-4",
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-4"
+      ],
+      "software_sbomType": [
+        "analyzed"
+      ],
+      "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Person",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-XZManj",
+      "name": "XZ Manj"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Tool",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-py-sbom-mini-1.0.0",
+      "name": "py-sbom-mini-1.0.0"
+    },
+    {
+      "type": "CreationInfo",
+      "spdxId": "_:creationinfo",
+      "specVersion": "3.0.1",
+      "created": "2026-07-28T23:44:01Z",
+      "createdBy": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-XZManj"
+      ],
+      "createdUsing": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-py-sbom-mini-1.0.0"
+      ],
+      "dataLicense": "https://spdx.org/licenses/CC0-1.0"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-0",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "to": [
+        "https://spdx.org/licenses/Apache-2.0"
+      ],
+      "relationshipType": "hasDeclaredLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-0",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "to": [
+        "https://spdx.org/licenses/Apache-2.0"
+      ],
+      "relationshipType": "hasConcludedLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "software_Package",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "name": "SBOMcraft",
+      "software_packageVersion": "0.6.0.0",
+      "hash": [
+        {
+          "algorithm": "SHA256",
+          "hashValue": "e59370798701bdc705dd36b0a5006b0fbebdc9855e3f940e72429a717af7ea05"
+        }
+      ],
+      "software_packageUrl": "pkg:generic/SBOMcraft@6.0.0.0",
+      "software_copyrightText": "Copyright (c) 2026 XZ Manj. All rights reserved.",
+      "suppliedBy": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-XZManj"
+      ]
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-1",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-PySide6",
+      "to": [
+        "https://spdx.org/licenses/LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+      ],
+      "relationshipType": "hasDeclaredLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-1",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-PySide6",
+      "to": [
+        "https://spdx.org/licenses/LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+      ],
+      "relationshipType": "hasConcludedLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Organization",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-QtforPythonTeam",
+      "name": "Qt for Python Team"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "software_Package",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-PySide6",
+      "name": "PySide6",
+      "software_packageVersion": "6.11.1",
+      "hash": [
+        {
+          "algorithm": "SHA256",
+          "hashValue": "a805ff91949c408b23ab8abec2872c628f7c2292ec638b968c8ebe26dd88a5de"
+        }
+      ],
+      "software_packageUrl": "pkg:pypi/pyside6@6.11.1",
+      "software_copyrightText": "NOASSERTION",
+      "suppliedBy": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-QtforPythonTeam"
+      ]
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-2",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-cyclonedx-python-lib",
+      "to": [
+        "https://spdx.org/licenses/Apache-2.0"
+      ],
+      "relationshipType": "hasDeclaredLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-2",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-cyclonedx-python-lib",
+      "to": [
+        "https://spdx.org/licenses/Apache-2.0"
+      ],
+      "relationshipType": "hasConcludedLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Organization",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-PaulHorton",
+      "name": "Paul Horton"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "software_Package",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-cyclonedx-python-lib",
+      "name": "cyclonedx-python-lib",
+      "software_packageVersion": "11.11.0",
+      "hash": [
+        {
+          "algorithm": "SHA256",
+          "hashValue": "d30bb30bb3c936ccf5becf8ee7159d4ae8ade613d5dde78c78c828e97f931596"
+        }
+      ],
+      "software_packageUrl": "pkg:pypi/cyclonedx-python-lib@11.11.0",
+      "software_copyrightText": "NOASSERTION",
+      "suppliedBy": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-PaulHorton"
+      ]
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-3",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-ijson",
+      "to": [
+        "https://spdx.org/licenses/BSD-3-Clause AND ISC"
+      ],
+      "relationshipType": "hasDeclaredLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-3",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-ijson",
+      "to": [
+        "https://spdx.org/licenses/BSD-3-Clause AND ISC"
+      ],
+      "relationshipType": "hasConcludedLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Organization",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-RodrigoTobar",
+      "name": "Rodrigo Tobar"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "software_Package",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-ijson",
+      "name": "ijson",
+      "software_packageVersion": "3.5.0",
+      "hash": [
+        {
+          "algorithm": "SHA256",
+          "hashValue": "14958e8648c6395b4cee5b08e4fc3f3b5e9656d58606ee9b539c341a5ae6dd3f"
+        }
+      ],
+      "software_packageUrl": "pkg:pypi/ijson@3.5.0",
+      "software_copyrightText": "NOASSERTION",
+      "suppliedBy": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-RodrigoTobar"
+      ]
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-DeclaredLicense-4",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-packageurl-python",
+      "to": [
+        "https://spdx.org/licenses/MIT"
+      ],
+      "relationshipType": "hasDeclaredLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-ConcludedLicense-4",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-packageurl-python",
+      "to": [
+        "https://spdx.org/licenses/MIT"
+      ],
+      "relationshipType": "hasConcludedLicense"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Organization",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-thepurlauthors",
+      "name": "the purl authors"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "software_Package",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-packageurl-python",
+      "name": "packageurl-python",
+      "software_packageVersion": "0.17.6",
+      "hash": [
+        {
+          "algorithm": "SHA256",
+          "hashValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
+        }
+      ],
+      "software_packageUrl": "pkg:pypi/packageurl-python@0.17.6",
+      "software_copyrightText": "NOASSERTION",
+      "suppliedBy": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Actor-thepurlauthors"
+      ]
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-0",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-DOCUMENT",
+      "to": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage"
+      ],
+      "relationshipType": "DESCRIBES"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-1",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "to": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-PySide6"
+      ],
+      "relationshipType": "dependsOn"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-2",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "to": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-cyclonedx-python-lib"
+      ],
+      "relationshipType": "dependsOn"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-3",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "to": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-ijson"
+      ],
+      "relationshipType": "dependsOn"
+    },
+    {
+      "creationInfo": "_:creationinfo",
+      "type": "Relationship",
+      "spdxId": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Relationship-Dependency-4",
+      "from": "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-RootPackage",
+      "to": [
+        "http://spdx.org/spdxdocs/SBOMcraft-adcb958c#SPDXRef-Package-packageurl-python"
+      ],
+      "relationshipType": "dependsOn"
+    }
+  ]
+}

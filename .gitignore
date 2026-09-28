@@ -2,6 +2,8 @@
 file_version_info.txt
 build.bat
 clean_sbom.py
+combine_python.py
+combined_code.txt
 #*.json
 
 # Pythonのキャッシュ
