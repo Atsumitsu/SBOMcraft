@@ -53,8 +53,6 @@ class ParseWorker(QObject):
             relations_folder = SBOMNode(name="📁 Relationships", node_type="relations_folder")
             licenses_folder = SBOMNode(name="📁 ExtractedLicense", node_type="category_folder")
 
-            package_map: Dict[str, SBOMNode] = {}
-            file_map: Dict[str, SBOMNode] = {}
             relationships_raw = []
 
             # 読み込みカウンター
@@ -76,7 +74,6 @@ class ParseWorker(QObject):
                         self.progress.emit(min(current_percent, 99)) # 完了時以外は99%で止める
 
                     # --- パースロジック ---
-                    # 【修正】'comment' を対象フィールドに追加
                     if k in ('SPDXID', 'name', 'spdxVersion', 'creationInfo', 
                              'dataLicense', 'documentNamespace', 'documentDescribes', 'comment'):
                         root.properties[k] = v
@@ -85,10 +82,11 @@ class ParseWorker(QObject):
                             doc_info_node.name = f"ℹ️ {v}"
                         elif k == 'SPDXID':
                             doc_info_node.spdx_id = v
+                            root.spdx_id = v
                         
                     elif k == 'packages':
                         for pkg in v:
-                            if self._is_canceled: # ネスト内でもキャンセルをチェック
+                            if self._is_canceled:
                                 self.finished.emit(None)
                                 return
                             pkg_id = pkg.get('SPDXID', '')
@@ -100,7 +98,7 @@ class ParseWorker(QObject):
                                 properties=pkg
                             )
                             packages_folder.append_child(pkg_node)
-                             
+                            
                     elif k == 'files':
                         for file_info in v:
                             if self._is_canceled:
@@ -134,24 +132,24 @@ class ParseWorker(QObject):
                     elif k == 'relationships':
                         relationships_raw = v
 
-                # リレーションの登録
-                for rel in relationships_raw:
-                    if self._is_canceled:
-                        self.finished.emit(None)
-                        return
-                    el_id = rel.get('spdxElementId', 'N/A')
-                    rel_id = rel.get('relatedSpdxElement', 'N/A')
-                    rel_type = rel.get('relationshipType', 'UNKNOWN')
-                     
-                    rel_node = SBOMNode(
-                        name=f"🔗 {el_id} ➔ [{rel_type}] ➔ {rel_id}",
-                        node_type="relationship",
-                        spdx_id=f"{el_id}-{rel_id}",
-                        properties=rel
-                    )
-                    relations_folder.append_child(rel_node)
+            # 【修正ポイント】ファイル読み込み（withブロック）が完全に終わった後にリレーションを登録
+            for rel in relationships_raw:
+                if self._is_canceled:
+                    self.finished.emit(None)
+                    return
+                el_id = rel.get('spdxElementId', 'N/A')
+                rel_id = rel.get('relatedSpdxElement', 'N/A')
+                rel_type = rel.get('relationshipType', 'UNKNOWN')
+                 
+                rel_node = SBOMNode(
+                    name=f"🔗 {el_id} ➔ [{rel_type}] ➔ {rel_id}",
+                    node_type="relationship",
+                    spdx_id=f"{el_id}-{rel_id}",
+                    properties=rel
+                )
+                relations_folder.append_child(rel_node)
 
-            # ツリー構造の結合
+            # ツリー構造の結合（データが存在するものだけ安全にルートに追加）
             root.append_child(doc_info_node)
             if packages_folder.child_count() > 0:
                 root.append_child(packages_folder)

@@ -1,5 +1,5 @@
 {
-  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.6.0.0-1d8771d2-a233-438b-8c89-239bb0b82209",
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.6.2.0-1d8771d2-a233-438b-8c89-239bb0b82209",
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
@@ -16,7 +16,7 @@
     {
       "name": "SBOMcraft",
       "SPDXID": "SPDXRef-RootPackage",
-      "versionInfo": "0.6.0.0",
+      "versionInfo": "0.6.2.0",
       "supplier": "Person: XZ Manj",
       "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
       "filesAnalyzed": false,
@@ -35,7 +35,7 @@
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:generic/SBOMcraft@6.0.0.0"
+          "referenceLocator": "pkg:generic/SBOMcraft@0.6.2.0"
         }
       ]
     },
@@ -164,11 +164,6 @@
       "spdxElementId": "SPDXRef-RootPackage",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-ijson"
-    },
-    {
-      "spdxElementId": "SPDXRef-RootPackage",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-ntia-conformance-checker"
     },
     {
       "spdxElementId": "SPDXRef-RootPackage",
