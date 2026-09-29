@@ -43,7 +43,7 @@ class Spdx3ExportDialog(QDialog):
                     self.parsed_tool_name = c
                     break
         if not self.parsed_tool_name:
-            self.parsed_tool_name = "Tool: SBOMcraft-v1.0"
+            self.parsed_tool_name = "Tool: SBOMcraft-v0.6.2.0"
 
         self.parsed_doc_name = self.existing_meta.get("document_name", "SBOM-Document")
         self.parsed_created_date = self.existing_meta.get("created", "")
@@ -121,7 +121,7 @@ class Spdx3ExportDialog(QDialog):
 
         # 7. データライセンス
         self.license_combo = QComboBox()
-        self.license_combo.addItems(["CC0-1.0", "NOASSERTION", "Apache-2.0", "MIT"])
+        self.license_combo.addItems(["CC0-1.0", "Apache-2.0", "MIT", "NOASSERTION"])
         self.license_combo.setCurrentText(self.parsed_license)
         form_layout.addRow("Data License:", self.license_combo)
 
