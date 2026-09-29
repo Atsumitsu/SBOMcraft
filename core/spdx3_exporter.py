@@ -182,7 +182,7 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
             "relationshipType": "hasConcludedLicense"
         })
 
-        # --- ハッシュ (hash) ---
+        # --- ハッシュ (verifiedUsing プロパティに変更し、Hash クラスオブジェクトとしてネスト) ---
         checksums = properties.get("checksums", [])
         hashes_list = []
         if checksums:
@@ -191,14 +191,19 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
                 val = cs.get("checksumValue", "")
                 if val:
                     hashes_list.append({
+                        "type": "Hash",
                         "algorithm": algo,
                         "hashValue": val
                     })
         
         if hashes_list:
-            software_pkg["hash"] = hashes_list
+            software_pkg["verifiedUsing"] = hashes_list
         else:
-            software_pkg["hash"] = [{"algorithm": "SHA256", "hashValue": "NOASSERTION"}]
+            software_pkg["verifiedUsing"] = [{
+                "type": "Hash",
+                "algorithm": "SHA256",
+                "hashValue": "NOASSERTION"
+            }]
 
         # --- packageUrl もしくは CPE ---
         external_refs = properties.get("externalRefs", [])
@@ -263,7 +268,6 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
             parts = rel_type_lower.split("_")
             rel_type = parts[0] + "".join(p.capitalize() for p in parts[1:])
         else:
-            # 既に正しいcamelCaseまたは小文字ケースであると仮定（ただし個別対応が必要な語彙もあるため注意）
             rel_type = rel_type_raw
 
         relationship_obj = {
@@ -294,15 +298,19 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
         spdx_sbom["software_sbomType"] = [sbom_type_val]
     else:
         spdx_sbom["software_sbomType"] = ["analyzed"]
-	
-    if user_comment:spdx_sbom["comment"] = user_comment
-	
+    
+    if user_comment:
+        spdx_sbom["comment"] = user_comment
+    
     # Sbom オブジェクトをグラフの先頭に挿入
     graph_nodes.insert(0, spdx_sbom)
-	
+    
     # 7. 最終的な JSON-LD 構造の組み立て
-    spdx3_data = {"@context": "spdx.org","@graph": graph_nodes}
-	
+    spdx3_data = {
+        "@context": "https://spdx.org/rdf/3.0.1/spdx-context.jsonld",
+        "@graph": graph_nodes
+    }
+    
     # 8. ファイル書き出し
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(spdx3_data, f, ensure_ascii=False, indent=2)

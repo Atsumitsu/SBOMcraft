@@ -33,3 +33,4 @@ env/
 dist/
 build/
 *.egg-info/
+spdx_models/
