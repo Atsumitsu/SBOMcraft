@@ -1,4 +1,5 @@
 *.spec
+
 file_version_info.txt
 build.bat
 clean_sbom.py
@@ -12,6 +13,7 @@ __pycache__/
 *$py.class
 
 # 仮想環境（Virtual Environments）
+.cache/
 .venv/
 venv/
 ENV/

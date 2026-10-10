@@ -19,7 +19,9 @@ from ui.spdx3_dialog import Spdx3ExportDialog
 from core.spdx3_exporter import convert_node_to_spdx3
 from core.converter import SPDXToCycloneDXConverter
 from core.validator_worker import ValidationWorker
-
+from core.license_manager import SPDXLicenseManager
+from ui.settings_dialog import SettingsDialog
+from ui.license_check_dialog import LicenseCheckDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -29,7 +31,10 @@ class MainWindow(QMainWindow):
         self.last_dir = self.settings.value("last_directory", "")
         self.current_root_node = None
         self.current_file_path = ""
-        
+
+        # SPDX ライセンスマネージャーの初期化（ローカルキャッシュの読み込み）
+        self.license_manager = SPDXLicenseManager()
+
         self.init_ui()
         self.restore_window_state()
         self.validator_thread = None
@@ -46,7 +51,14 @@ class MainWindow(QMainWindow):
         open_action = file_menu.addAction("📂 Open SBOM JSON")
         open_action.setShortcut("Ctrl+O") # ショートカットキーも追加
         open_action.triggered.connect(self.open_file)
-        
+
+        file_menu.addSeparator() # 区切り線
+
+        # ▼ 追加: 設定画面を開くアクション
+        settings_action = file_menu.addAction("⚙️ Preferences...")
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self.show_settings_dialog)
+
         file_menu.addSeparator() # 区切り線
         
         exit_action = file_menu.addAction("❌ Exit")
@@ -55,6 +67,12 @@ class MainWindow(QMainWindow):
 
         # --- Validation メニュー ---
         validation_menu = menu_bar.addMenu("Validation")
+
+        # 2026/10/10
+        self.act_license_check = validation_menu.addAction("📜 License Check")
+        self.act_license_check.triggered.connect(self.open_license_check_dialog)
+        
+        validation_menu.addSeparator() # 区切り線
         
         # CISA サブメニュー
         cisa_menu = validation_menu.addMenu("CISA")
@@ -136,6 +154,7 @@ class MainWindow(QMainWindow):
 
     def set_validation_menu_enabled(self, enabled: bool):
         """メニューの有効・無効を一括切り替え"""
+        self.act_license_check.setEnabled(enabled)
         self.act_cisa_custom.setEnabled(enabled)
         self.action_export_cdx.setEnabled(enabled)
         self.action_export_spdx3ld.setEnabled(enabled)
@@ -451,3 +470,21 @@ class MainWindow(QMainWindow):
                     if hasattr(self, "console"):
                         self.console.append(error_msg)
                     QMessageBox.critical(self, "Error", error_msg)
+    # 2026/10/10
+    def show_settings_dialog(self):
+        """設定ダイアログを表示する"""
+        dialog = SettingsDialog(license_manager=self.license_manager, parent=self)
+        dialog.exec()
+
+    def open_license_check_dialog(self):
+        """ライセンスチェック詳細ダイアログを開く"""
+        if not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "先にSBOMファイルを読み込んでください。")
+            return
+        
+        dialog = LicenseCheckDialog(
+            root_node=self.current_root_node,
+            license_manager=self.license_manager,
+            parent=self
+        )
+        dialog.exec()
