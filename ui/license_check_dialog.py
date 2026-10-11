@@ -31,8 +31,8 @@ class LicenseCheckDialog(QDialog):
 
         info_label = QLabel(
             "SBOMに含まれる全パッケージのライセンス情報（Concluded / Declared）の検証結果一覧です。\n"
-            "🟢 <font color='green'>薄い緑</font>: 未定義値（NOASSERTION等）  |  "
-            "🔴 <font color='red'>薄い赤</font>: 未登録または無効なライセンス識別子"
+            "🟢 薄い緑: 未定義値（NOASSERTION等）  "
+            "🔴 薄い赤: 未登録または無効なライセンス識別子"
         )
         layout.addWidget(info_label)
 
