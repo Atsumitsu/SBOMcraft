@@ -43,7 +43,7 @@ class Spdx3ExportDialog(QDialog):
                     self.parsed_tool_name = c
                     break
         if not self.parsed_tool_name:
-            self.parsed_tool_name = "Tool: SBOMcraft-v0.6.2.0"
+            self.parsed_tool_name = "Tool: SBOMcraft-v0.6.3.0"
 
         self.parsed_doc_name = self.existing_meta.get("document_name", "SBOM-Document")
         self.parsed_created_date = self.existing_meta.get("created", "")

@@ -1,4 +1,4 @@
-# 📝 変更履歴 (Changelog)
+# 変更履歴 (Changelog)
 
 SBOMcraft のすべての重要な変更はこのファイルに記録されます。
 フォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.0.0/) に基づいています。
@@ -6,6 +6,13 @@ SBOMcraft のすべての重要な変更はこのファイルに記録されま�
 ---
 
 ## [Unreleased]
+## [v0.6.3.0] - 2026-10-11
+
+### 追加 (Added)
+* **SPDX Licenseチェック処理**:
+  * SPDX License のダウンロード機能
+  * SPDX License との一致性の確認機能
+  * チェック結果のCSVダウンロード機能
 
 ---
 ## [v0.6.2.0] - 2026-09-29
