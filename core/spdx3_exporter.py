@@ -12,9 +12,9 @@ VALID_SBOM_TYPES = {"analyzed", "build", "deployed", "design", "runtime", "sourc
 def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
     """
     SBOMcraftの内部ツリーデータを走査し、
-    SPDX 3.0.1 の正式仕様（Core / Software プロファイル）に準拠した 
+    SPDX 3.0.1 の正式仕様（Core / Software / ExpandedLicensing プロファイル）に準拠した 
     JSON-LD データを構築する。
-    パッケージ間の依存関係およびライセンス情報を独立した Relationship ノードとして生成する。
+    パッケージ間の依存関係、ライセンス関係、および抽出ライセンス情報を独立したノードとして生成する。
     """
     if meta_data is None:
         meta_data = {}
@@ -96,9 +96,10 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
     }
     graph_nodes.append(creation_info_node)
 
-    # 4. ツリーからパッケージノードおよびリレーションシップノードを収集
+    # 4. ツリーからパッケージノード、リレーションシップノード、および抽出ライセンスノードを収集
     packages_to_process = []
     relationships_to_process = []
+    licenses_to_process = []  # ★ 追加: hasExtractedLicensingInfos の収集用
 
     def collect_nodes(node):
         if not node:
@@ -108,6 +109,8 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
             packages_to_process.append(node)
         elif node_type == "relationship":
             relationships_to_process.append(node)
+        elif node_type == "licenses":  # ★ 追加: パーサーで抽出されたライセンスノード
+            licenses_to_process.append(node)
         
         for child in getattr(node, "children", []):
             collect_nodes(child)
@@ -152,6 +155,9 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
                 return lic
             if lic in ["NOASSERTION", "NONE"]:
                 return f"https://spdx.org/licenses/{lic}"
+            # LicenseRef- などのカスタムライセンスIDの場合のベース名前空間対応
+            if lic.startswith("LicenseRef-"):
+                return f"{base_ns}#{lic}"
             return f"https://spdx.org/licenses/{lic}"
 
         # 1. Declared License のリレーション生成
@@ -244,7 +250,39 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
 
         graph_nodes.append(software_pkg)
 
-    # 5. 依存関係リレーションシップノード（type: "Relationship"）の動的生成と追加
+    # 5. 抽出ライセンス情報 (hasExtractedLicensingInfos) の CustomLicense ノード変換 【新規追加】
+    custom_license_ids = []
+    for idx, lic_node in enumerate(licenses_to_process):
+        lic_props = getattr(lic_node, "properties", {})
+        lic_id = lic_props.get("licenseId", "") or getattr(lic_node, "spdx_id", "") or f"LicenseRef-Custom-{idx}"
+        
+        if not lic_id.startswith("http"):
+            lic_id_uri = f"{base_ns}#{lic_id}"
+        else:
+            lic_id_uri = lic_id
+
+        custom_license_ids.append(lic_id_uri)
+        
+        lic_name = lic_props.get("name", "") or lic_node.name.replace("📜 ", "")
+        extracted_text = lic_props.get("extractedText", "")
+        comment = lic_props.get("comment", "")
+
+        custom_license_obj = {
+            "creationInfo": creation_info_id,
+            "type": "expandedlicensing_CustomLicense",
+            "spdxId": lic_id_uri,
+            "name": lic_name if lic_name else "Custom License"
+        }
+
+        if extracted_text:
+            custom_license_obj["expandedlicensing_extractedText"] = extracted_text
+        
+        if comment:
+            custom_license_obj["comment"] = comment
+
+        graph_nodes.append(custom_license_obj)
+
+    # 6. 依存関係リレーションシップノード（type: "Relationship"）の動的生成と追加
     dependency_relationship_ids = []
     for idx, rel_node in enumerate(relationships_to_process):
         rel_props = getattr(rel_node, "properties", {})
@@ -280,11 +318,12 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
         }
         graph_nodes.append(relationship_obj)
 
-    # 6. Sbom（ドキュメント本体）クラスの構築
+    # 7. Sbom（ドキュメント本体）クラスの構築
     document_id = f"{base_ns}#SPDXRef-DOCUMENT"
     
-    # すべての作成された要素（Package、依存用Rel、ライセンス用Rel）を包含
-    all_element_ids = package_ids + dependency_relationship_ids + license_relationship_ids
+    # すべての作成された要素（Package、依存用Rel、ライセンス用Rel、カスタムライセンス）を包含
+    all_element_ids = package_ids + dependency_relationship_ids + license_relationship_ids + custom_license_ids
+    
     spdx_sbom = {
         "creationInfo": creation_info_id,
         "type": "software_Sbom",
@@ -305,13 +344,13 @@ def convert_node_to_spdx3(root_node, output_path: str, meta_data: dict = None):
     # Sbom オブジェクトをグラフの先頭に挿入
     graph_nodes.insert(0, spdx_sbom)
     
-    # 7. 最終的な JSON-LD 構造の組み立て
+    # 8. 最終的な JSON-LD 構造の組み立て
     spdx3_data = {
         "@context": "https://spdx.org/rdf/3.0.1/spdx-context.jsonld",
         "@graph": graph_nodes
     }
     
-    # 8. ファイル書き出し
+    # 9. ファイル書き出し
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(spdx3_data, f, ensure_ascii=False, indent=2)
     
