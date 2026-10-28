@@ -108,24 +108,26 @@ class AboutDialog(QDialog):
         
         <ul>
             <li>
-                <b>PySide6 (Qt for Python)</b><br>
-                License: LGPL-3.0-only</br>
-                URL: <a href="https://www.qt.io/ja-jp/development/download-open-source">https://www.qt.io</a><br>
-            </li>
-            <li>
                 <b>Python</b><br>
                 ver:3.13<br>
                 License: PSF-2.0<br>
             </li>
             <li>
-                <b>spdx-tools (SPDX Official Tool)</b><br>
-                Version: 0.8.5<br>
+                <b>PySide6 (Qt for Python)</b><br>
+                License: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only <br>
+                URL: <a href="https://www.qt.io/ja-jp/development/download-open-source">https://www.qt.io</a><br>
+            </li>
+            <li>
+                <b>ijson</b><br>
+                License: BSD-3-Clause AND ISC<br>
+            </li>
+            <li>
+                <b>cyclonedx-python-lib</b><br>
                 License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
             </li>
             <li>
-                <b>spdx-python-model (SPDX Official Tool)</b><br>
-                Version: 0.0.6<br>
-                License: <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a><br>
+                <b>packageurl-python</b><br>
+                License: MIT<br>
             </li>
         </ul>        
         <p style="font-size: 11px; color: #666; margin-top: 15px;">

@@ -6,6 +6,15 @@ SBOMcraft のすべての重要な変更はこのファイルに記録されま�
 ---
 
 ## [Unreleased]
+## [v0.6.4.0] - 2026-10-29
+
+### 追加 (Added)
+* SPDX3.x JSON-LDへの変換処理の hasExtractedLicensingInfos 対応
+
+### 変更 (Changed)
+* aboutダイアログに表示している「使用しているpackage表記」を現在のものに修正
+
+---
 ## [v0.6.3.0] - 2026-10-11
 
 ### 追加 (Added)
