@@ -129,6 +129,11 @@ class AboutDialog(QDialog):
                 <b>packageurl-python</b><br>
                 License: MIT<br>
             </li>
+            <li>
+                <b>Lucide Icons (https://lucide.dev)</b><br>
+                License: ISC License<br>
+                Copyright (c) 2026 Lucide Icons and Contributors<br>
+            </li>
         </ul>        
         <p style="font-size: 11px; color: #666; margin-top: 15px;">
         All other registered trademarks and copyrights are the property of their respective owners.

@@ -4,11 +4,11 @@
 
 import os
 from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor,QIcon, QPixmap
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter, 
     QVBoxLayout, QHBoxLayout, QLabel, QHeaderView, 
-    QStatusBar, QFileDialog, QMessageBox, QApplication,QDialog
+    QStatusBar, QFileDialog, QMessageBox, QApplication,QDialog,QToolButton,QMenuBar, QToolButton, QMenu
 )
 
 from core.parser import ParseWorker, SBOMNode
@@ -43,62 +43,97 @@ class MainWindow(QMainWindow):
         # -------------------------------------------------------------
         # 1. メニューバーの構築
         # -------------------------------------------------------------
-        menu_bar = self.menuBar()
+        menu_toolbar = self.addToolBar("MenuToolbar")
+        menu_toolbar.setMovable(False)
+        from PySide6.QtCore import QSize
+        menu_toolbar.setIconSize(QSize(16, 16))
+        menu_toolbar.setStyleSheet("""
+            QToolBar {
+                background: transparent;
+                border-bottom: 1px solid #e0e0e0;
+                spacing: 5px;
+                padding: 2px;
+            }
+            QToolButton {
+                padding: 1px 10px 3px 10px;
+                border-radius: 4px;
+                background: transparent;
+                
+            }
+            QToolButton:hover {
+                background-color: #e8f0fe;
+            }
+        """)
 
-        # --- File メニュー ---
-        file_menu = menu_bar.addMenu("File")
+        # 💡 ボタンとメニューをまとめて生成する保守しやすいヘルパー関数
+        def add_menu_button(title: str, icon_filename: str, menu: QMenu) -> QToolButton:
+            btn = QToolButton(self)
+            btn.setText(title)
+            icon_path = os.path.join("icons", icon_filename)
+            if os.path.exists(icon_path):
+                btn.setIcon(QIcon(icon_path))
+            btn.setMenu(menu)
+            btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            menu_toolbar.addWidget(btn)
+            return btn
+
+        # --- File メニュー用ボタンの作成 ---
+        # ボタンを押したときに展開されるポップアップメニューを作成
+        file_menu = QMenu(self)
         
-        open_action = file_menu.addAction("📂 Open SBOM JSON")
+        open_icon = QIcon(os.path.join("icons", "book-open.svg"))
+        open_action = file_menu.addAction(open_icon, "Open SBOM JSON")
         open_action.setShortcut("Ctrl+O") # ショートカットキーも追加
         open_action.triggered.connect(self.open_file)
-
+        
         file_menu.addSeparator() # 区切り線
 
         # ▼ 追加: 設定画面を開くアクション
-        settings_action = file_menu.addAction("⚙️ Preferences...")
+        settings_action = file_menu.addAction("Preferences...")
         settings_action.setShortcut("Ctrl+,")
         settings_action.triggered.connect(self.show_settings_dialog)
 
         file_menu.addSeparator() # 区切り線
         
-        exit_action = file_menu.addAction("❌ Exit")
+        exit_action = file_menu.addAction("Exit")
         exit_action.setShortcut("Alt+F4")
         exit_action.triggered.connect(self.close) # 閉じるイベントを呼ぶ
 
-        # --- Validation メニュー ---
-        validation_menu = menu_bar.addMenu("Validation")
+        add_menu_button("  File", "folder.svg", file_menu)
 
-        # 2026/10/10
-        self.act_license_check = validation_menu.addAction("📜 License Check")
+# --- 2. Validation メニュー ---
+        validation_menu = QMenu(self)
+        self.act_license_check = validation_menu.addAction("License Check")
         self.act_license_check.triggered.connect(self.open_license_check_dialog)
         
-        validation_menu.addSeparator() # 区切り線
+        validation_menu.addSeparator()
         
-        # CISA サブメニュー
         cisa_menu = validation_menu.addMenu("CISA")
         self.act_cisa_custom = cisa_menu.addAction("Custom CISA2026")
-
-        # イベント接続
         self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA2026"))
+        
+        add_menu_button("  Validation", "text-search.svg", validation_menu)
 
-        # --- Converter メニュー ---
-        converter_menu = menu_bar.addMenu("Converter")
-        self.action_export_spdx3ld = converter_menu.addAction("🔄 Export to SPDX 3.0 (JSON-LD)")
-        self.action_export_cdx = converter_menu.addAction("🔄 Export to CycloneDX")
+        # --- 3. Converter メニュー ---
+        converter_menu = QMenu(self)
+        self.action_export_spdx3ld = converter_menu.addAction("Export to SPDX 3.0 (JSON-LD)")
+        self.action_export_cdx = converter_menu.addAction("Export to CycloneDX")
         self.action_export_spdx3ld.triggered.connect(self.on_export_spdx3_triggered)
         self.action_export_cdx.triggered.connect(self.export_to_cyclonedx)
-        
-        # 初期状態ではファイルがないため無効化しておく
+
         self.action_export_cdx.setEnabled(False)
         self.action_export_spdx3ld.setEnabled(False)
-        
-        # 初期状態では検証メニューを無効化
         self.set_validation_menu_enabled(False)
+        
+        add_menu_button("  Converter", "refresh-cw.svg", converter_menu)
 
-        # --- Help メニュー ---
-        help_menu = menu_bar.addMenu("Help")
-        about_action = help_menu.addAction("ℹ️ About")
+        # --- 4. Help メニュー ---
+        help_menu = QMenu(self)
+        about_action = help_menu.addAction("About")
         about_action.triggered.connect(self.show_about_dialog)
+        
+        add_menu_button("  Help", "file-question-mark.svg", help_menu)
 
         # -------------------------------------------------------------
         # 2. メインレイアウト（スプリッター構造）
@@ -112,6 +147,19 @@ class MainWindow(QMainWindow):
         # 左ペイン：ツリービュー
         self.tree_view = QTreeView()
         self.tree_view.setObjectName("tree_view")
+
+        # ▼ ツリービュー専用のキープレスイベントを動的にオーバーライド
+        def custom_tree_key_press(event):
+            text = event.text()
+            if text and len(text) == 1:
+                char = self._normalize_search_char(text)
+                if char and self.jump_to_node_starting_with(char):
+                    event.accept()
+                    return
+            QTreeView.keyPressEvent(self.tree_view, event)
+            
+        self.tree_view.keyPressEvent = custom_tree_key_press
+
         self.tree_model = QStandardItemModel()
         self.tree_model.setHorizontalHeaderLabels(["Name", "SPDXID"])
         self.tree_view.setModel(self.tree_model)
@@ -129,9 +177,25 @@ class MainWindow(QMainWindow):
         compliance_layout = QVBoxLayout(compliance_container)
         compliance_layout.setContentsMargins(2, 2, 2, 0)
         
-        my_label = QLabel("■ コンソール")
-        my_label.setStyleSheet("margin-left: 2px;")
-        compliance_layout.addWidget(my_label)
+        # ▼ アイコンとタイトルを横並びにするヘッダーレイアウト
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(2, 0, 0, 0)
+        header_layout.setSpacing(6) # アイコンと文字の間隔
+
+        icon_label = QLabel()
+        icon_path = os.path.join("icons", "monitor.svg") # .png の場合は拡張子を変更
+        if os.path.exists(icon_path):
+            # QIcon経由で読み込むと SVG でも PNG でも指定サイズに綺麗に描画されます
+            pixmap = QIcon(icon_path).pixmap(16, 16)
+            icon_label.setPixmap(pixmap)
+        header_layout.addWidget(icon_label)
+
+        my_label = QLabel("コンソール")
+        my_label.setStyleSheet("font-weight: bold;") # 少し太字にするとGitHub風になります
+        header_layout.addWidget(my_label)
+        header_layout.addStretch() # 左寄せにするためのスペーサー
+
+        compliance_layout.addLayout(header_layout)
     
         self.compliance_report = QTextEdit()
         self.compliance_report.setReadOnly(True)
@@ -401,9 +465,16 @@ class MainWindow(QMainWindow):
         item_id = QStandardItem(node.spdx_id if node.spdx_id else "")
         
         parent_item.appendRow([item_name, item_id])
-        for child in node.children:
+        
+        # ▼ ルートノード（document）の直下にあるフォルダ群はソートせず、
+        #    それ以外のフォルダの中身（末端の項目）を名称（node.name）で昇順ソートする
+        if node.node_type == "document":
+            children_to_process = node.children
+        else:
+            children_to_process = sorted(node.children, key=lambda x: x.name.lower())
+        
+        for child in children_to_process:
             self.populate_tree(child, item_name)
-
     def on_tree_item_clicked(self, index: QModelIndex):
         if not index.parent().isValid():
             self.detail_panel.clear_display()
@@ -488,3 +559,65 @@ class MainWindow(QMainWindow):
             parent=self
         )
         dialog.exec()
+
+#2026-11-14
+    def keyPressEvent(self, event):
+        # tree_view にフォーカスがあるとき、または通常のキー入力時
+        # 1文字の英数字（あるいは全角英数字）が押されたかを判定
+        text = event.text()
+        if text and len(text) == 1 and (text.isalnum() or ord(text) > 127):
+            # 全角英数字を半角に、大文字を小文字に正規化
+            search_char = self._normalize_search_char(text)
+            if search_char:
+                if self.jump_to_node_starting_with(search_char):
+                    event.accept()
+                    return
+        super().keyPressEvent(event)
+
+    def _normalize_search_char(self, char: str) -> str:
+        """全角英数字を半角小文字に変換する"""
+        # 全角英字 (Ａ-Ｚ, ａ-ｚ) や全角数字 (０-９) を半角に変換
+        code = ord(char)
+        if 0xFF21 <= code <= 0xFF3A:  # Ａ-Ｚ
+            char = chr(code - 0xFEE0)
+        elif 0xFF41 <= code <= 0xFF5A:  # ａ-ｚ
+            char = chr(code - 0xFEE0)
+        elif 0xFF10 <= code <= 0xFF19:  # ０-９
+            char = chr(code - 0xFEE0)
+        return char.lower()
+
+    def jump_to_node_starting_with(self, char: str) -> bool:
+        """ツリーモデルを走査し、指定された文字で始まるノードへフォーカスを移動する"""
+        model = self.tree_model
+        
+        # 再帰的にアイテムを探索するヘルパー関数
+        def search_items(parent_index: QModelIndex):
+            for row in range(model.rowCount(parent_index)):
+                index = model.index(row, 0, parent_index)
+                item = model.itemFromIndex(index)
+                if item:
+                    node = item.data(Qt.ItemDataRole.UserRole)
+                    if node and node.node_type == "package":  # 主にパッケージなどのノードを対象
+                        node_name = node.name.lower()
+                        # 絵文字やスペースを除外して純粋な名称の先頭文字と比較
+                        # (例: "📦 PySide6" なら 'p' から始まるかチェック)
+                        clean_name = "".join([c for c in node_name if c.isalnum()]).lower()
+                        if clean_name.startswith(char):
+                            return index
+                
+                # 子階層がある場合は再帰探索
+                if model.hasChildren(index):
+                    found = search_items(index)
+                    if found.isValid():
+                        return found
+            return QModelIndex()
+
+        target_index = search_items(QModelIndex())
+        if target_index.isValid():
+            self.tree_view.setCurrentIndex(target_index)
+            self.tree_view.scrollTo(target_index, QTreeView.ScrollHint.PositionAtCenter)
+            # 選択されたノードの詳細パネルも同時に更新させる
+            self.on_tree_item_clicked(target_index)
+            return True
+        return False
+    

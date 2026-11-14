@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 XZ Manj
 
-
+import os
 import json
 from typing import Any, List
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QTableWidget, QTableWidgetItem, QTextEdit, QSplitter, QHeaderView, QPushButton
@@ -32,7 +33,24 @@ class DetailPanel(QWidget):
         kv_container = QWidget()
         kv_layout = QVBoxLayout(kv_container)
         kv_layout.setContentsMargins(0, 5, 0, 0)
-        kv_layout.addWidget(QLabel("■ プロパティ (Key-Value)"))
+
+        # ▼ アイコン付きタイトルヘッダーの作成
+        kv_header_layout = QHBoxLayout()
+        kv_header_layout.setContentsMargins(2, 0, 0, 0)
+        kv_header_layout.setSpacing(6)
+
+        icon_label = QLabel()
+        icon_path = os.path.join("icons", "table-2.svg")
+        if os.path.exists(icon_path):
+            icon_label.setPixmap(QIcon(icon_path).pixmap(16, 16))
+        kv_header_layout.addWidget(icon_label)
+
+        title_label = QLabel("プロパティ (Key-Value)")
+        title_label.setStyleSheet("font-weight: bold;")
+        kv_header_layout.addWidget(title_label)
+        kv_header_layout.addStretch()
+
+        kv_layout.addLayout(kv_header_layout)
         
         self.table_widget = QTableWidget(0, 2)
         self.table_widget.setHorizontalHeaderLabels(["キー (Key)", "値 (Value)"])
@@ -48,8 +66,25 @@ class DetailPanel(QWidget):
         json_layout.setContentsMargins(0, 2, 0, 0)
         
         json_header_layout = QHBoxLayout()
-        json_header_layout.addWidget(QLabel("■ 該当箇所の生 JSON (オンデマンド生成)"))
+        json_header_layout.setContentsMargins(2, 0, 0, 0)
+        json_header_layout.setSpacing(6)
+
+        # 1. アイコンの追加
+        json_icon_label = QLabel()
+        json_icon_path = os.path.join("icons", "file-braces.svg")
+        if os.path.exists(json_icon_path):
+            json_icon_label.setPixmap(QIcon(json_icon_path).pixmap(16, 16))
+        json_header_layout.addWidget(json_icon_label)
+
+        # 2. タイトルテキスト
+        json_title_label = QLabel("該当箇所の生 JSON (オンデマンド生成)")
+        json_title_label.setStyleSheet("font-weight: bold;")
+        json_header_layout.addWidget(json_title_label)
+
+        # スペーサーで左側と右側を分離
+        json_header_layout.addStretch()
         
+        # 3. 全文表示ボタン
         self.btn_full_text = QPushButton("🔍 全文を別窓で表示")
         self.btn_full_text.setEnabled(False)
         self.btn_full_text.clicked.connect(self.show_full_text_dialog)
@@ -72,7 +107,22 @@ class DetailPanel(QWidget):
         indent = "    " * depth
 
         if isinstance(data, dict):
-            for key, val in data.items():
+            # ▼ ルート階層（depth == 0）の場合、表示順の優先リストを適用する
+            if depth == 0:
+                priority_keys = [
+                    "name", "SPDXID", "versionInfo", "supplier", 
+                    "originator", "downloadLocation", "filesAnalyzed", "licenseConcluded", "licenseDeclared"
+                ]
+                # 優先リストにあるキーを順番通りに、リストにない残りのキーは後ろにアルファベット順で配置
+                keys = sorted(
+                    data.keys(), 
+                    key=lambda k: (priority_keys.index(k) if k in priority_keys else 999, k)
+                )
+            else:
+                keys = data.keys()
+
+            for key in keys:
+                val = data[key]
                 display_key = f"{indent}{key}"
                 if isinstance(val, (dict, list)):
                     rows.append((display_key, ""))
@@ -131,4 +181,3 @@ class DetailPanel(QWidget):
             parent=self
         )
         dialog.exec()
-        
