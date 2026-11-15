@@ -6,9 +6,16 @@ SBOMcraft のすべての重要な変更はこのファイルに記録されま�
 ---
 
 ## [Unreleased]
-## [v0.6.5.0] - 2026-11-xx
+* Validation結果のExcel出力
+* Validation結果のExcel出力を編集したデータの読み込み・反映
+* Packagesの削除
+
+## [v0.7.0.0] - 2026-11-xx
 
 ### 追加 (Added)
+* **編集/保存機能**
+  * 編集は Packages 配下のパッケージのみ対応
+  * 編集内容を保存、SPDX3.x JSON-LD出力可能
 
 ### 変更 (Changed)
 * ツリービューを昇順ソートで表示

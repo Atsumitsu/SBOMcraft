@@ -16,6 +16,9 @@ class SBOMNode:
         self.properties = properties if properties is not None else {}
         self.children: List['SBOMNode'] = []
         self.parent: 'SBOMNode' = None
+        # 専用ノードを持たないトップレベルキー (snippets / annotations / externalDocumentRefs 等)。
+        # ルートノードでのみ使用し、保存時に書き戻す。
+        self.extra_sections: Dict[str, Any] = {}
 
     def append_child(self, child: 'SBOMNode'):
         child.parent = self
@@ -59,7 +62,7 @@ class ParseWorker(QObject):
             loop_counter = 0
 
             with open(self.filepath, 'rb') as f:
-                items = ijson.kvitems(f, '')
+                items = ijson.kvitems(f, '', use_float=True)  # Decimal ではなく float で受ける (ijson>=3.1)
                 for k, v in items:
                     # ユーザーがキャンセルボタンを押していたら処理を即中断
                     if self._is_canceled:
@@ -131,6 +134,10 @@ class ParseWorker(QObject):
                             
                     elif k == 'relationships':
                         relationships_raw = v
+
+                    else:
+                        # 上記以外のトップレベルキーは捨てずに退避し、保存時に書き戻す
+                        root.extra_sections[k] = v
 
             # 【修正ポイント】ファイル読み込み（withブロック）が完全に終わった後にリレーションを登録
             for rel in relationships_raw:

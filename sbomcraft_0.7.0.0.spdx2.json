@@ -1,12 +1,12 @@
 {
-  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.6.4.0-c3c8fc42-7429-4215-8205-37eac166ebd0",
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.0.0-09eb8a13-1b70-4b2a-b18a-16bdea8c5b46",
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SBOMcraft",
   "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
   "creationInfo": {
-    "created": "2026-10-26T12:38:47Z",
+    "created": "2026-11-15T05:32:26Z",
     "creators": [
       "Person: XZ Manj",
       "Tool: py-sbom-mini-1.1.0"
@@ -16,7 +16,7 @@
     {
       "name": "SBOMcraft",
       "SPDXID": "SPDXRef-RootPackage",
-      "versionInfo": "0.6.4.0",
+      "versionInfo": "0.7.0.0",
       "supplier": "Person: XZ Manj",
       "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
       "filesAnalyzed": false,
@@ -28,40 +28,14 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "5240075d0d8cf883710d218d0c3d21e06fe016e0f31d1dd3dbbcf9c6fca6ece2"
+          "checksumValue": "dd9d212e0db640fc2f0a30010ec9b90e6669c8fd848708d3c98d7995a26cecff"
         }
       ],
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:generic/SBOMcraft@0.6.3.0"
-        }
-      ]
-    },
-    {
-      "name": "ijson",
-      "SPDXID": "SPDXRef-Package-ijson",
-      "versionInfo": "3.6.0",
-      "supplier": "Organization: Rodrigo Tobar",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "BSD-3-Clause AND ISC",
-      "licenseDeclared": "BSD-3-Clause AND ISC",
-      "copyrightText": "Copyright (c) Rodrigo Tobar",
-      "summary": "Iterative JSON parser with standard Python iterator interfaces",
-      "homepage": "https://github.com/ICRAR/ijson",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/ijson@3.6.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2b46b727320a9ed40e1328af07e777d322c8f269672c510cac47e2ae95fc56f7"
+          "referenceLocator": "pkg:generic/SBOMcraft@0.7.0.0"
         }
       ]
     },
@@ -92,28 +66,28 @@
       ]
     },
     {
-      "name": "packageurl-python",
-      "SPDXID": "SPDXRef-Package-packageurl-python",
-      "versionInfo": "0.17.6",
-      "supplier": "Organization: the purl authors",
+      "name": "ijson",
+      "SPDXID": "SPDXRef-Package-ijson",
+      "versionInfo": "3.6.0",
+      "supplier": "Organization: Rodrigo Tobar",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
-      "licenseConcluded": "MIT",
-      "licenseDeclared": "MIT",
-      "copyrightText": "Copyright (c) the purl authors",
-      "summary": "A purl aka. Package URL parser and builder",
-      "homepage": "https://github.com/package-url/packageurl-python",
+      "licenseConcluded": "BSD-3-Clause AND ISC",
+      "licenseDeclared": "BSD-3-Clause AND ISC",
+      "copyrightText": "Copyright (c) Rodrigo Tobar",
+      "summary": "Iterative JSON parser with standard Python iterator interfaces",
+      "homepage": "https://github.com/ICRAR/ijson",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+          "referenceLocator": "pkg:pypi/ijson@3.6.0"
         }
       ],
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
+          "checksumValue": "2b46b727320a9ed40e1328af07e777d322c8f269672c510cac47e2ae95fc56f7"
         }
       ]
     },
@@ -140,6 +114,32 @@
         {
           "algorithm": "SHA256",
           "checksumValue": "453eff898da8fdba4c01a0c3152892e3353d0bbf20c68e4a1b4d08b6d3886b22"
+        }
+      ]
+    },
+    {
+      "name": "packageurl-python",
+      "SPDXID": "SPDXRef-Package-packageurl-python",
+      "versionInfo": "0.17.6",
+      "supplier": "Organization: the purl authors",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) the purl authors",
+      "summary": "A purl aka. Package URL parser and builder",
+      "homepage": "https://github.com/package-url/packageurl-python",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
         }
       ]
     },
@@ -269,7 +269,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "5092382f8f74f3007df861a10cc2819b31fc0f1f1f71f4c980777669cbdc325b"
+          "checksumValue": "ac0ec3aa3bd41811343d68b30fe3118ecd9aa95aa6bde00f1fbbe0d08b066d62"
         }
       ]
     },
@@ -347,7 +347,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "44c650ebd833d852c8731fa3f0c5759506309622300e4c1954a540d78572cc54"
+          "checksumValue": "0d0eb68f0f169182613dc64b3ab50b20855508c1c1d2faafe8fccf23edb6a345"
         }
       ]
     },

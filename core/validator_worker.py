@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 SBOMcraft Project
 
-import os
 import json
 import re
 import time
 from PySide6.QtCore import QThread, Signal
 
 class ValidationWorker(QThread):
-    """巨大SBOMファイルの適合性チェックをバックグラウンドで実行し、進捗状況をリアルタイムに通知するワーカー"""
+    """メモリ上のSBOM辞書データをバックグラウンドで検証し、進捗状況をリアルタイムに通知するワーカー"""
 
     # 外部（UIメイン画面）へ通知するシグナル群
-    progress_status = Signal(str)  # 状態メッセージ（例: "パッケージ走査中 (500/2000)..."）
+    progress_status = Signal(str)  # 状態メッセージ
     progress_percent = Signal(int) # パーセンテージ (0-100)
     finished_report = Signal(dict) # 検証完了時の結果データ
 
@@ -26,39 +25,28 @@ class ValidationWorker(QThread):
     # 非推奨・弱小ハッシュアルゴリズムのリスト (小文字表記)
     WEAK_HASH_ALGORITHMS = {"md5", "sha1", "sha-1"}
 
-    def __init__(self, file_path: str, profile: str = "CISA 2026"):
+    def __init__(self, sbom_data: dict, profile: str = "CISA2026"):
         super().__init__()
-        self.file_path = file_path
+        self.sbom_data = sbom_data
         self.profile = profile
 
     def run(self):
         start_time = time.time()
 
-        if not self.file_path or not os.path.exists(self.file_path):
-            self.progress_status.emit("❌ エラー: ファイルが存在しません。")
+        if not self.sbom_data:
+            self.progress_status.emit("❌ エラー: 検証対象のSBOMデータが空です。")
             self.finished_report.emit({
                 "passed": False,
-                "report_html": "<font color='red'>エラー: 指定されたファイルが見つかりません。</font>",
+                "report_html": "<font color='red'>エラー: 検証対象のSBOMデータが存在しません。</font>",
                 "error_packages": []
             })
             return
 
-        # 1. JSON読み込み開始
-        self.progress_status.emit("📄 SBOMファイルを読み込み中 (JSONパース)...")
-        self.progress_percent.emit(10)
+        # 1. 読み込み開始（メモリ上なので即座に完了）
+        self.progress_status.emit("📄 メモリ上のSBOMデータを解析中...")
+        self.progress_percent.emit(20)
 
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception as e:
-            self.progress_status.emit(f"❌ パース失敗: {str(e)}")
-            self.finished_report.emit({
-                "passed": False,
-                "report_html": f"<font color='red'>エラー: JSONのパースに失敗しました ({str(e)})</font>",
-                "error_packages": []
-            })
-            return
-
+        data = self.sbom_data
         self.progress_percent.emit(30)
         
         creation_info = data.get("creationInfo", {})
@@ -125,14 +113,14 @@ class ValidationWorker(QThread):
 
         self.progress_percent.emit(40)
 
-        # 3. パッケージレベル検証 (進捗をリアルタイムに更新)
+        # 3. パッケージレベル検証
         self.progress_status.emit(f"📦 パッケージ検証を開始 (総件数: {total_packages:,} 件)...")
         
-        update_interval = max(1, total_packages // 20)  # 全体の5%刻みで通知
+        update_interval = max(1, total_packages // 20)
 
         for idx, pkg in enumerate(packages):
             if idx % update_interval == 0 or idx == total_packages - 1:
-                pct = 40 + int((idx / total_packages) * 50)  # 40% -> 90% の範囲
+                pct = 40 + int((idx / total_packages) * 50)
                 self.progress_status.emit(f"📦 パッケージ検証中: {idx + 1:,} / {total_packages:,} 件完了 ({pct}%)...")
                 self.progress_percent.emit(pct)
 
@@ -143,7 +131,6 @@ class ValidationWorker(QThread):
             reasons_err = []
             reasons_warn = []
 
-            # NTIA / CISA 共通必須
             if not pkg_name or pkg_name.strip().lower() in self.UNKNOWN_VALUES:
                 reasons_err.append({
                     "code": "ERR_NTIA_NAME_MISSING",
@@ -167,10 +154,9 @@ class ValidationWorker(QThread):
                 reasons_err.append({
                     "code": "ERR_NTIA_PROVIDER_MISSING",
                     "msg": "作成者/提供者 (Supplier/Originator) 欠落",
-                    "fix": "supplier または originator に正確な提供者文字列（例: Organization: Apache）を設定してください。"
+                    "fix": "supplier または originator に正確な提供者文字列を設定してください。"
                 })
 
-            # CISA 2026 追加要件
             if self.profile.startswith("CISA"):
                 ext_refs = pkg.get("externalRefs", [])
                 has_purl_or_cpe = any(
@@ -181,7 +167,7 @@ class ValidationWorker(QThread):
                     reasons_warn.append({
                         "code": "WRN_CISA_IDENTIFIER_MISSING",
                         "msg": "識別子 (purl/CPE) 欠落",
-                        "fix": "externalRefs に Package URL (purl) または CPE 情報を追加して識別性を高めてください。"
+                        "fix": "externalRefs に Package URL (purl) または CPE 情報を追加してください。"
                     })
 
                 checksums = pkg.get("checksums", [])
@@ -201,14 +187,13 @@ class ValidationWorker(QThread):
                     reasons_warn.append({
                         "code": "WRN_CISA_HASH_MISSING",
                         "msg": "ハッシュ値 (Hashes) 未記載",
-                        "fix": "コンポーネントの改ざん検証のため、checksums フィールドを追加してください。"
+                        "fix": "checksums フィールドを追加してください。"
                     })
                 elif not has_strong_hash:
-                    # 脆弱・非推奨なハッシュ（MD5/SHA1等）のみが登録されている場合
                     reasons_err.append({
                         "code": "ERR_CISA_WEAK_HASH_ALGORITHM",
                         "msg": "非推奨のハッシュアルゴリズムが使用されています。",
-                        "fix": "NIST/IANA承認アルゴリズム（SHA256, SHA512 等）によるハッシュ値を設定してください。"
+                        "fix": "SHA256, SHA512 等のハッシュ値を設定してください。"
                     })
 
                 lic_concluded = str(pkg.get("licenseConcluded", "")).strip().lower()
@@ -219,8 +204,8 @@ class ValidationWorker(QThread):
                 if concluded_invalid and declared_invalid:
                     reasons_warn.append({
                         "code": "WRN_CISA_LICENSE_MISSING",
-                        "msg": "ライセンス情報 (License) 未明記 (NOASSERTION 等)",
-                        "fix": "ライセンス識別子（SPDX Identifier）または NONE 等の明確なステータスを設定してください。"
+                        "msg": "ライセンス情報 (License) 未明記",
+                        "fix": "明確なライセンス識別子を設定してください。"
                     })
 
             if reasons_err or reasons_warn:
@@ -247,7 +232,6 @@ class ValidationWorker(QThread):
         self.progress_percent.emit(100)
         self.progress_status.emit(f"✅ 検証完了 (所要時間: {elapsed:.2f} 秒)")
 
-        # 完了データを結果シグナルとして渡す
         self.finished_report.emit({
             "passed": passed,
             "report_html": report_html,

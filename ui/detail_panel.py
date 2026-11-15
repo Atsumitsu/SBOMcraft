@@ -3,25 +3,35 @@
 # Copyright (c) 2026 XZ Manj
 
 import os
+import copy
 import json
 from typing import Any, List
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QIcon,QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QTableWidget, QTableWidgetItem, QTextEdit, QSplitter, QHeaderView, QPushButton,QMessageBox
 )
 from core.parser import SBOMNode
+from core.serializer import apply_flat_rows, json_default
 from ui.dialogs import FullTextDialog
 
 class DetailPanel(QWidget):
+    # ▼【新規】ノードのデータが更新されたことを親に知らせるシグナル
+    node_updated = Signal(object)
     """選択されたノードのプロパティ(Key-Value)と生JSONをオンデマンド表示するパネル"""
+
+    # 編集を許可するノード種別。対象を増やす場合はここに node_type を追加する
+    # （例: {"package", "document_info"}）
+    EDITABLE_NODE_TYPES = {"package"}
+    NOT_EDITABLE_TOOLTIP = "編集できるのは Packages 配下のパッケージのみです"
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_json_text = ""
         self.current_node_name = ""
         self.current_node = None  # 👈 保持しているノードを後から参照できるように保持すると便利です
         self.original_properties_backup = None  # 🔄 リセット用に元のプロパティのコピーを保持
+        self.is_editing = False  # 👈 【追加】編集中フラグ
         self.init_ui()
 
     def init_ui(self):
@@ -58,6 +68,8 @@ class DetailPanel(QWidget):
         # ▼ アクションボタン群の配置
         self.btn_edit = QPushButton("✏️ 編集")
         self.btn_edit.clicked.connect(self.start_edit_mode)
+        self.btn_edit.setEnabled(False)  # ノード選択後、編集可能な種別のときだけ有効化
+        self.btn_edit.setToolTip(self.NOT_EDITABLE_TOOLTIP)
         kv_header_layout.addWidget(self.btn_edit)
 
         self.btn_reset = QPushButton("🔄 リセット")
@@ -161,8 +173,19 @@ class DetailPanel(QWidget):
         
         return rows
 
+    def _is_editable(self, node) -> bool:
+        """このノードが編集対象か（Packages 配下のパッケージのみ）"""
+        return node is not None and node.node_type in self.EDITABLE_NODE_TYPES
+
+    def _update_edit_button_state(self):
+        """現在のノードに応じて「編集」ボタンの有効/無効とツールチップを切り替える"""
+        editable = self._is_editable(self.current_node)
+        self.btn_edit.setEnabled(editable)
+        self.btn_edit.setToolTip("" if editable else self.NOT_EDITABLE_TOOLTIP)
+
     def update_display(self, node: SBOMNode):
         self.current_node = node
+        self._update_edit_button_state()
         # 編集キャンセルやリセット用にディープコピーを保持しておく
         import copy
         self.original_properties_backup = copy.deepcopy(node.properties)
@@ -188,16 +211,16 @@ class DetailPanel(QWidget):
                 # ▼【新規】インデント等を除いた純粋なキー名を取得
                 clean_key = key.strip()
 
-                # 🔒【新規】「SPDXID」の行、または値が空（コンテナ行など）の場合は、Value列も編集不可にする
-                if clean_key == "SPDXID" or value == "":
+                # 🔒【新規】「SPDXID」の行などの場合は、Value列も編集不可にする
+                if clean_key.lower() in {"spdxid", "checksums", "externalrefs"}:
                     val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    # SPDXIDであることが一目でわかるように少し文字色を薄くする（お好みで）
-#                    if clean_key == "SPDXID":
-#                        val_item.setForeground(Qt.GlobalColor.darkGray)
+                # elif value == "" and clean_key in ("[","]"):
+                #    val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
                 self.table_widget.setItem(row_idx, 0, key_item)
                 self.table_widget.setItem(row_idx, 1, val_item)
         
-            self.current_json_text = json.dumps(properties, indent=2, ensure_ascii=False)
+            self.current_json_text = json.dumps(properties, indent=2, ensure_ascii=False, default=json_default)
             self.text_edit.setPlainText(self.current_json_text)
             self.btn_full_text.setEnabled(True)
         else:
@@ -205,116 +228,12 @@ class DetailPanel(QWidget):
             self.current_json_text = "{}"
             self.btn_full_text.setEnabled(False)
 
-    def start_edit_mode(self):
-        """編集モードを開始する"""
-        if not self.current_node:
-            return
-        
-        # ボタンの表示切り替え
-        self.btn_edit.setVisible(False)
-        self.btn_reset.setVisible(True)
-        self.btn_save.setVisible(True)
-
-        # テーブルを編集可能にする（値列のみ、あるいはダブルクリック編集）
-        self.table_widget.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked | 
-            QTableWidget.EditTrigger.EditKeyPressed
-        )
-        # ▼【新規】編集モード中であることをわかりやすくするため、Value列（列1）の背景色を変更する
-        edit_bg_color = QColor("#fffdf0")  # 薄い黄色
-        for row in range(self.table_widget.rowCount()):
-            val_item = self.table_widget.item(row, 1)
-            if val_item:
-                # フラグが編集可能（ItemIsEditable）なセルだけ背景色を変える
-                if val_item.flags() & Qt.ItemFlag.ItemIsEditable:
-                    val_item.setBackground(edit_bg_color)
-
-    def reset_edits(self):
-        """変更を破棄して元の状態に戻す"""
-        if self.original_properties_backup:
-            self._load_table_data(self.original_properties_backup)
-        self.end_edit_mode()
-
-    def save_edits(self):
-        """テーブルの編集内容をノードの properties に反映し、生JSONを更新する"""
-        if not self.current_node:
-            return
-
-        try:
-            # 1. テーブルの全行を走査して、現在の表示・編集状態から一時的なフラットマップを作成
-            # キーのインデントを取り除く
-            updated_data = {}
-            
-            # 簡易的に現在のテーブル行を上から順に読み込む仕組み、
-            # または元のプロパティ構造をベースに値を上書きしていくアプローチが安全です。
-            # ここではシンプルに、現在保持している properties のコピーをベースに、
-            # 編集された値をマッピングし直すか、あるいは直接書き戻します。
-
-            # 今回のシンプルな実装アプローチ：
-            # テーブルの行数分ループし、各行のキーパスを特定して current_node.properties を更新する
-            for row in range(self.table_widget.rowCount()):
-                key_item = self.table_widget.item(row, 0)
-                val_item = self.table_widget.item(row, 1)
-                
-                if not key_item or not val_item:
-                    continue
-                
-                # インデント（4スペース単位）を取り除いた純粋なキー名を取得
-                display_key = key_item.text()
-                actual_key = display_key.strip()
-                
-                # 値を取得（数値や真偽値っぽいものは適宜型変換するとより綺麗ですが、まず文字列として代入）
-                new_val = val_item.text()
-                
-                # ▼ トップレベルのプロパティの場合の更新処理
-                # （※ ネストが浅い一般的なSBOMプロパティであればこれで直接更新できます）
-                if actual_key in self.current_node.properties:
-                    # 元の型（boolやintなど）を維持したい場合の簡易型推測
-                    old_val = self.current_node.properties[actual_key]
-                    if isinstance(old_val, bool):
-                        new_val = (new_val.lower() == "true")
-                    elif isinstance(old_val, int):
-                        try:
-                            new_val = int(new_val)
-                        except ValueError:
-                            pass
-                    elif isinstance(old_val, float):
-                        try:
-                            new_val = float(new_val)
-                        except ValueError:
-                            pass
-                    
-                    self.current_node.properties[actual_key] = new_val
-
-            # 2. 下段の生 JSON 表示（self.text_edit）を最新の node.properties から再生成して更新する
-            self.current_json_text = json.dumps(self.current_node.properties, indent=2, ensure_ascii=False)
-            self.text_edit.setPlainText(self.current_json_text)
-            
-            # 3. バックアップ（リセット用）も最新の状態に更新
-            import copy
-            self.original_properties_backup = copy.deepcopy(self.current_node.properties)
-
-            QMessageBox.information(self, "完了", "プロパティの変更を反映しました。\n（※別のノードを選択しても値が維持されます）")
-            self.end_edit_mode()
-
-        except Exception as e:
-            QMessageBox.critical(self, "エラー", f"保存中にエラーが発生しました:\n{str(e)}")
-
-
-    def end_edit_mode(self):
-        """編集モードを終了して通常表示に戻す"""
-        self.btn_edit.setVisible(True)
-        self.btn_reset.setVisible(False)
-        self.btn_save.setVisible(False)
-
-        self.table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        # ▼【新規】Value列（列1）の背景色をデフォルト（透明/白）に戻す
-        for row in range(self.table_widget.rowCount()):
-            val_item = self.table_widget.item(row, 1)
-            if val_item:
-                val_item.setBackground(QColor(0, 0, 0, 0))  # 背景色をリセット（透明）
-
     def clear_display(self):
+        if self.is_editing:
+            self.end_edit_mode()
+        self.current_node = None            # 選択解除後に古いノードを編集できないようにする
+        self.original_properties_backup = None
+        self._update_edit_button_state()
         self.table_widget.setRowCount(0)
         self.text_edit.clear()
         self.current_json_text = ""
@@ -330,3 +249,106 @@ class DetailPanel(QWidget):
             parent=self
         )
         dialog.exec()
+        
+    def start_edit_mode(self):
+        """編集モードを開始する"""
+        if not self._is_editable(self.current_node):
+            return  # ボタン以外の経路から呼ばれても、編集対象外ノードは編集させない
+
+        self.is_editing = True
+
+        # ボタンの表示切り替え
+        self.btn_edit.setVisible(False)
+        self.btn_reset.setVisible(True)
+        self.btn_save.setVisible(True)
+
+        # テーブルを編集可能にする
+        self.table_widget.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked | 
+            QTableWidget.EditTrigger.EditKeyPressed
+        )
+        
+        # 編集モード中であることをわかりやすくするため、Value列（列1）の背景色を変更する
+        edit_bg_color = QColor("#fffdf0")  # 薄い黄色
+        for row in range(self.table_widget.rowCount()):
+            val_item = self.table_widget.item(row, 1)
+            if val_item:
+                if val_item.flags() & Qt.ItemFlag.ItemIsEditable:
+                    val_item.setBackground(edit_bg_color)
+
+    def reset_edits(self):
+        """変更を破棄して元の状態に戻す"""
+        if self.original_properties_backup:
+            self._load_table_data(self.original_properties_backup)
+        self.end_edit_mode()
+
+    def save_edits(self):
+        """テーブルの編集内容をノードの properties に反映し、生JSON・ツリー表示を更新する"""
+        node = self.current_node
+        if not self._is_editable(node):
+            return
+
+        # 編集中のセルエディタを確定させる（フォーカスをテーブルへ移すとデリゲートが commit する）
+        self.table_widget.setFocus()
+
+        rows = []
+        for row in range(self.table_widget.rowCount()):
+            key_item = self.table_widget.item(row, 0)
+            val_item = self.table_widget.item(row, 1)
+            if key_item and val_item:
+                rows.append((key_item.text(), val_item.text()))
+
+        # 作業コピーへ適用し、全行が成功したときだけ本体へコミットする
+        # （途中で入力エラーになっても node.properties を半端な状態にしない）
+        work = copy.deepcopy(node.properties)
+        try:
+            changed = apply_flat_rows(work, rows)
+        except ValueError as e:
+            QMessageBox.warning(self, "入力エラー", f"{e}\n\n入力を修正して、もう一度保存してください。")
+            return  # 編集モードは継続
+
+        if changed:
+            node.properties.clear()          # dict の同一性を保ったまま差し替え
+            node.properties.update(work)
+            self._refresh_node_label(node)
+
+        self.current_json_text = json.dumps(node.properties, indent=2, ensure_ascii=False, default=json_default)
+        self.text_edit.setPlainText(self.current_json_text)
+        self.original_properties_backup = copy.deepcopy(node.properties)
+        self._load_table_data(node.properties)
+
+        if changed:
+            self.node_updated.emit(node)     # ツリー表示の同期・変更フラグ更新は親側で行う
+            QMessageBox.information(self, "完了", "プロパティの変更を反映しました。")
+        else:
+            QMessageBox.information(self, "完了", "変更はありませんでした。")
+        self.end_edit_mode()
+
+    @staticmethod
+    def _refresh_node_label(node: SBOMNode):
+        """プロパティ変更に合わせてツリー上のノード名を作り直す（core/parser.py の命名規則と同じ）"""
+        p = node.properties
+        if node.node_type == "package":
+            node.name = f"📦 {p.get('name', 'Unknown Package')} ({p.get('versionInfo', 'N/A')})"
+        elif node.node_type == "document_info":
+            node.name = f"ℹ️ {p.get('name', 'DocumentRoot')}"
+        elif node.node_type == "file":
+            node.name = f"📄 {p.get('fileName', 'Unknown File')}"
+        elif node.node_type == "relationship":
+            node.name = (f"🔗 {p.get('spdxElementId', 'N/A')} ➔ "
+                         f"[{p.get('relationshipType', 'UNKNOWN')}] ➔ {p.get('relatedSpdxElement', 'N/A')}")
+        elif node.node_type == "licenses":
+            node.name = f"📜 {p.get('name', '(none)')}"
+
+    def end_edit_mode(self):
+        """編集モードを終了して通常表示に戻す"""
+        self.btn_edit.setVisible(True)
+        self.btn_reset.setVisible(False)
+        self.btn_save.setVisible(False)
+        self.is_editing = False
+
+        self.table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        for row in range(self.table_widget.rowCount()):
+            val_item = self.table_widget.item(row, 1)
+            if val_item:
+                val_item.setBackground(QColor(0, 0, 0, 0))  # 背景色をリセット（透明）

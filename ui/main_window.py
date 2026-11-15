@@ -3,6 +3,7 @@
 # Copyright (c) 2026 XZ Manj
 
 import os
+import html
 from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor,QIcon, QPixmap
 from PySide6.QtWidgets import (
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.parser import ParseWorker, SBOMNode
+from core.serializer import build_spdx_document, validate_spdx_document, write_json_atomic
 from core.validator import SBOMValidator
 from ui.detail_panel import DetailPanel
 from ui.dialogs import AboutDialog
@@ -31,6 +33,7 @@ class MainWindow(QMainWindow):
         self.last_dir = self.settings.value("last_directory", "")
         self.current_root_node = None
         self.current_file_path = ""
+        self._modified = False  # 未保存の編集があるか
 
         # SPDX ライセンスマネージャーの初期化（ローカルキャッシュの読み込み）
         self.license_manager = SPDXLicenseManager()
@@ -95,7 +98,19 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.show_settings_dialog)
 
         file_menu.addSeparator() # 区切り線
-        
+        # 上書き保存アクション
+        save_action = file_menu.addAction("上書き保存(&S)")
+        save_action.setShortcut("Ctrl+S") # Ctrl+S
+        save_action.triggered.connect(self.save_file)
+
+        # 別名保存アクション
+        save_as_action = file_menu.addAction("名前を付けて保存(&A)...")
+        save_as_action.setShortcut("Ctrl+Shift+S")
+        save_as_action.triggered.connect(self.save_file_as)
+               
+
+        file_menu.addSeparator() # 区切り線
+
         exit_action = file_menu.addAction("Exit")
         exit_action.setShortcut("Alt+F4")
         exit_action.triggered.connect(self.close) # 閉じるイベントを呼ぶ
@@ -167,6 +182,7 @@ class MainWindow(QMainWindow):
 
         # 右ペイン：詳細パネル
         self.detail_panel = DetailPanel()
+        self.detail_panel.node_updated.connect(self.on_detail_node_updated)
         self.main_splitter.addWidget(self.detail_panel)
         self.main_splitter.setSizes([450, 750])
 
@@ -262,7 +278,9 @@ class MainWindow(QMainWindow):
             self.set_validation_menu_enabled(False)
 
         # 3. バックグラウンドワーカーのインスタンス化
-        self.validation_worker = ValidationWorker(self.current_file_path, profile=profile)
+        sbom_dict = self.build_dict_from_root_node(self.current_root_node)
+        self.validation_worker = ValidationWorker(sbom_data=sbom_dict, profile=profile)
+#        self.validation_worker = ValidationWorker(self.current_file_path, profile=profile)
 
         # 4. リアルタイム進捗シグナルとUIスロットの接続
         self.validation_worker.progress_status.connect(self.on_validation_progress)
@@ -277,10 +295,12 @@ class MainWindow(QMainWindow):
         # 自動で最新ログ（最下部）へスクロール
         self.compliance_report.ensureCursorVisible()
 
+    @Slot(dict)
     def on_validation_finished(self, result: dict):
         """検証完了時に最終HTMLレポートを描画する"""
         # HTML形式の検証結果レポートをレンダリングして表示
         self.compliance_report.setHtml(result["report_html"])
+        
         # エラー箇所を赤く染めるUI処理
         if result.get("error_packages"):
             root_item = self.tree_model.item(0, 0)
@@ -294,18 +314,27 @@ class MainWindow(QMainWindow):
 
             if tree_pkg_folder_item:
                 warning_color = QColor("#FFCCCC")
+                
+                # 💡 【修正】エラー情報の SPDXID をキーにした辞書マップを作成
+                error_map = {}
                 for err in result["error_packages"]:
-                    idx = err["index"]
-                    reasons_str = err["reasons"]
-                    
-                    pkg_item_name = tree_pkg_folder_item.child(idx, 0)
-                    pkg_item_id = tree_pkg_folder_item.child(idx, 1)
+                    err_msgs = [e.get("msg", "") for e in err.get("errors", [])]
+                    reasons_str = ", ".join(err_msgs) if err_msgs else "警告あり"
+                    error_map[err["spdx_id"]] = reasons_str
 
+                # 💡 【修正】インデックスに頼らず、ツリー内のノードの SPDXID と突合してハイライトする
+                for row in range(tree_pkg_folder_item.rowCount()):
+                    pkg_item_name = tree_pkg_folder_item.child(row, 0)
+                    pkg_item_id = tree_pkg_folder_item.child(row, 1)
+                    
                     if pkg_item_name and pkg_item_id:
-                        pkg_item_name.setBackground(warning_color)
-                        pkg_item_id.setBackground(warning_color)
-                        if not pkg_item_name.text().startswith("⚠️"):
-                            pkg_item_name.setText(f"⚠️ {pkg_item_name.text()} 【{reasons_str}】")
+                        node = pkg_item_name.data(Qt.ItemDataRole.UserRole)
+                        if node and node.spdx_id in error_map:
+                            reasons_str = error_map[node.spdx_id]
+                            pkg_item_name.setBackground(warning_color)
+                            pkg_item_id.setBackground(warning_color)
+                            if not pkg_item_name.text().startswith("⚠️"):
+                                pkg_item_name.setText(f"⚠️ {pkg_item_name.text()} 【{reasons_str}】")
 
         # 無効化していたメニューやボタンの復元
         if hasattr(self, 'set_validation_menu_enabled'):
@@ -373,6 +402,9 @@ class MainWindow(QMainWindow):
             self.tree_view.header().restoreState(tree_state)
 
     def closeEvent(self, event):
+        if not self._maybe_save_changes():
+            event.ignore()
+            return
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("main_splitter_state", self.main_splitter.saveState())
         self.settings.setValue("vertical_splitter_state", self.vertical_splitter.saveState())
@@ -384,6 +416,8 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_file(self):
+        if not self._maybe_save_changes():   # 未保存の編集があれば先に確認
+            return
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Open SBOM JSON", self.last_dir, "JSON Files (*.json);;All Files (*)"
         )
@@ -435,6 +469,7 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()
         self.status_bar.showMessage("SBOM parsed. Building tree view...")
         self.current_root_node = root_node
+        self._set_modified(False)
         
         self.tree_view.setUpdatesEnabled(False)
         self.tree_view.header().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
@@ -462,7 +497,10 @@ class MainWindow(QMainWindow):
     def populate_tree(self, node: SBOMNode, parent_item: QStandardItem):
         item_name = QStandardItem(node.name)
         item_name.setData(node, Qt.ItemDataRole.UserRole)
+        item_name.setEditable(False)  # ▼ ダブルクリックでの編集を禁止
+
         item_id = QStandardItem(node.spdx_id if node.spdx_id else "")
+        item_id.setEditable(False)    # ▼ ダブルクリックでの編集を禁止
         
         parent_item.appendRow([item_name, item_id])
         
@@ -475,10 +513,24 @@ class MainWindow(QMainWindow):
         
         for child in children_to_process:
             self.populate_tree(child, item_name)
+
     def on_tree_item_clicked(self, index: QModelIndex):
         if not index.parent().isValid():
+            # フォルダやドキュメント直下以外をクリックした場合のガード
+            # ※もし「編集中にルート側をクリックした場合」もガードしたい場合はここにチェックを入れます
+            if getattr(self.detail_panel, "is_editing", False):
+                if not self._check_unsaved_changes():
+                    return
             self.detail_panel.clear_display()
             return
+
+        # 💡 【追加】もし現在詳細パネルが編集モード中なら、移動前に確認ダイアログを表示
+        if getattr(self.detail_panel, "is_editing", False):
+            if not self._check_unsaved_changes():
+                # ユーザーが「キャンセル」を選んだ場合は、選択の移動を元のノードに戻す等の処理が必要ですが、
+                # シンプルに処理を中断してツリーの選択を戻す場合はインデックス制御を行います。
+                return
+
         model = self.tree_view.model()
         name_index = model.index(index.row(), 0, index.parent())
         item = model.itemFromIndex(name_index)
@@ -486,6 +538,38 @@ class MainWindow(QMainWindow):
             node = item.data(Qt.ItemDataRole.UserRole)
             if node:
                 self.detail_panel.update_display(node)
+
+    def _check_unsaved_changes(self) -> bool:
+        """
+        編集中に別のノードへ移動しようとした際の確認ダイアログ。
+        Returns:
+            bool: True = 移動を続行する（保存または破棄）, False = 移動をキャンセルする
+        """
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setWindowTitle("未保存の変更")
+        msg_box.setText("プロパティが編集中です。\n変更を保存しますか？")
+        
+        # 💡 ボタンを定義して日本語のテキストをセットする
+        btn_save = msg_box.addButton("保存", QMessageBox.ButtonRole.AcceptRole)
+        btn_discard = msg_box.addButton("破棄", QMessageBox.ButtonRole.DestructiveRole)
+        btn_cancel = msg_box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+        
+        msg_box.exec()
+
+        clicked_button = msg_box.clickedButton()
+
+        if clicked_button == btn_save:
+            # 1. 保存を実行してから移動を許可
+            self.detail_panel.save_edits()
+            return True
+        elif clicked_button == btn_discard:
+            # 2. 変更を破棄（リセット）して移動を許可
+            self.detail_panel.reset_edits()
+            return True
+        else:
+            # 3. キャンセル（移動しない）
+            return False
     
     # v0.6.2.0
     def on_export_spdx3_triggered(self):
@@ -621,3 +705,159 @@ class MainWindow(QMainWindow):
             return True
         return False
     
+    def build_dict_from_root_node(self, root_node: SBOMNode) -> dict:
+        """メモリ上の root_node ツリーから、現在の編集内容を反映した SPDX 2.3 辞書を再構築する"""
+        return build_spdx_document(root_node)
+
+    @Slot(object)
+    def on_detail_node_updated(self, updated_node: SBOMNode):
+        """DetailPanel でノードが保存・更新されたとき、ツリービュー側の表示を同期させる"""
+        self._set_modified(True)
+        # Document Information の編集内容を DocumentRoot 側の properties にも反映
+        # (SPDX3 エクスポート等が root.properties を参照するため)
+        if updated_node.node_type == "document_info" and self.current_root_node:
+            self.current_root_node.properties.update(updated_node.properties)
+
+        model = self.tree_model
+
+        # 1. 現在選択されているツリーアイテムを直接狙って高速に更新
+        current_index = self.tree_view.currentIndex()
+        if current_index.isValid():
+            name_index = model.index(current_index.row(), 0, current_index.parent())
+            item = model.itemFromIndex(name_index)
+            if item:
+                node = item.data(Qt.ItemDataRole.UserRole)
+                if node == updated_node:
+                    item.setText(updated_node.name)
+                    return
+
+        # 2. フォールバック：ツリー全体を再帰的に走査して該当ノードを更新
+        def find_and_update(parent_index: QModelIndex):
+            for row in range(model.rowCount(parent_index)):
+                index = model.index(row, 0, parent_index)
+                item = model.itemFromIndex(index)
+                if item:
+                    node = item.data(Qt.ItemDataRole.UserRole)
+                    if node == updated_node:
+                        item.setText(updated_node.name)
+                        return True
+                
+                if model.hasChildren(index):
+                    if find_and_update(index):
+                        return True
+            return False
+
+        find_and_update(QModelIndex())
+
+    # ------------------------------------------------------------------
+    # 保存処理
+    # ------------------------------------------------------------------
+    def _set_modified(self, modified: bool):
+        self._modified = modified
+        self._update_window_title()
+
+    def _update_window_title(self):
+        name = os.path.basename(self.current_file_path) if self.current_file_path else ""
+        title = f"SBOMcraft - {name}" if name else "SBOMcraft"
+        self.setWindowTitle(f"{title} *" if self._modified else title)
+
+    def _commit_pending_edit(self) -> bool:
+        """DetailPanel が編集モードのままなら、保存/破棄/キャンセルを確認する。False=処理を中止"""
+        if getattr(self.detail_panel, "is_editing", False):
+            return self._check_unsaved_changes()
+        return True
+
+    def _maybe_save_changes(self) -> bool:
+        """ファイルを閉じる/開き直す前の未保存確認。True=続行 / False=キャンセル"""
+        if not self._commit_pending_edit():
+            return False
+        if not (self._modified and self.current_root_node):
+            return True
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("未保存の変更")
+        box.setText("変更内容がファイルに保存されていません。\n保存しますか？")
+        btn_save = box.addButton("保存", QMessageBox.ButtonRole.AcceptRole)
+        btn_discard = box.addButton("破棄", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == btn_save:
+            return self.save_file()      # 保存に失敗/キャンセルしたら False → 閉じない
+        return clicked == btn_discard
+
+    def save_file(self) -> bool:
+        """現在開いているファイルに上書き保存する。成功したら True"""
+        if not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "保存するSBOMデータが読み込まれていません。")
+            return False
+        if not self._commit_pending_edit():
+            return False
+        if not self.current_file_path:
+            return self.save_file_as()
+        return self._write_to_file(self.current_file_path)
+
+    def save_file_as(self) -> bool:
+        """ファイルチューザーを開いて別名で保存する。成功したら True"""
+        if not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "保存するSBOMデータが読み込まれていません。")
+            return False
+        if not self._commit_pending_edit():
+            return False
+
+        default_path = self.current_file_path or os.path.join(self.last_dir or "", "sbom.spdx.json")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "名前を付けて保存", default_path, "SPDX JSON (*.json);;All Files (*)"
+        )
+        if not file_path:
+            return False
+        if not os.path.splitext(file_path)[1]:
+            file_path += ".json"
+        return self._write_to_file(file_path)
+
+    def _write_to_file(self, file_path: str) -> bool:
+        """
+        編集内容を反映した SPDX 2.3 JSON を file_path にアトミックに書き出す。
+        成功したら True。失敗時は元のファイルを壊さず False を返す。
+        """
+        if not self.current_root_node:
+            return False
+
+        error = None
+        warnings = []
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            doc = self.build_dict_from_root_node(self.current_root_node)   # ツリー → SPDX 辞書
+            warnings = validate_spdx_document(doc)                         # 構造チェック(警告のみ)
+            write_json_atomic(file_path, doc, indent=2)                    # 一時ファイル→置換
+        except Exception as e:
+            error = e
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if error is not None:
+            self.status_bar.showMessage("Save failed.")
+            self.compliance_report.append(
+                f"<font color='red'><b>[ERROR]</b> 保存失敗: {html.escape(str(error))}</font>")
+            QMessageBox.critical(self, "エラー", f"ファイルの保存に失敗しました:\n{error}")
+            return False
+
+        # --- 成功時の状態更新 ---
+        self.current_file_path = file_path
+        self.last_dir = os.path.dirname(file_path)
+        self.settings.setValue("last_directory", self.last_dir)
+        self._set_modified(False)
+
+        self.status_bar.showMessage(f"Saved: {file_path}")
+        self.compliance_report.append(
+            f"<font color='green'><b>[SUCCESS]</b> 保存しました:</font> "
+            f"<font color='gray'>{html.escape(file_path)}</font>")
+        if warnings:
+            self.compliance_report.append(
+                f"<font color='#b36b00'><b>[WARN]</b> SPDX 2.3 の構造チェックで {len(warnings)} 件の指摘があります"
+                "（ファイルは保存済みです）:</font>")
+            for msg in warnings:
+                self.compliance_report.append(f"&nbsp;&nbsp;・{html.escape(msg)}")
+        return True
