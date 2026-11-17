@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTextEdit, QSplitter, QHeaderView, QPushButton,QMessageBox
 )
 from core.parser import SBOMNode
-from core.serializer import apply_flat_rows, json_default
+from core.serializer import apply_flat_rows, json_default, PACKAGE_PRIORITY_KEYS
 from ui.dialogs import FullTextDialog
 
 class DetailPanel(QWidget):
@@ -141,10 +141,7 @@ class DetailPanel(QWidget):
         if isinstance(data, dict):
             # ▼ ルート階層（depth == 0）の場合、表示順の優先リストを適用する
             if depth == 0:
-                priority_keys = [
-                     "SPDXID", "name", "versionInfo", "supplier", 
-                    "originator", "downloadLocation", "filesAnalyzed", "licenseConcluded", "licenseDeclared"
-                ]
+                priority_keys = PACKAGE_PRIORITY_KEYS
                 # 優先リストにあるキーを順番通りに、リストにない残りのキーは後ろにアルファベット順で配置
                 keys = sorted(
                     data.keys(), 

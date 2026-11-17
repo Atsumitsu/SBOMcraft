@@ -22,6 +22,12 @@ from typing import Any, Dict, Iterable, List, Tuple
 # 1. ツリー → SPDX 2.3 辞書
 # ---------------------------------------------------------------------------
 
+# Packages の表示順（DetailPanel の詳細表示と Excel 出力の列順で共通利用）。
+PACKAGE_PRIORITY_KEYS: List[str] = [
+    "SPDXID", "name", "versionInfo", "supplier", "originator",
+    "downloadLocation", "filesAnalyzed", "licenseConcluded", "licenseDeclared",
+]
+
 # SPDX 2.3 JSON のトップレベルキーの標準的な並び順。
 # ここに無いキー（extra_sections 由来の未知キー等）は末尾に元の順序で付く。
 SPDX_TOP_LEVEL_ORDER: List[str] = [

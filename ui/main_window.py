@@ -9,7 +9,8 @@ from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor,QIcon, QPixm
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter, 
     QVBoxLayout, QHBoxLayout, QLabel, QHeaderView, 
-    QStatusBar, QFileDialog, QMessageBox, QApplication,QDialog,QToolButton,QMenuBar, QToolButton, QMenu
+    QStatusBar, QFileDialog, QMessageBox, QApplication,QDialog,QToolButton,QMenuBar, QToolButton, QMenu,
+    QProgressDialog
 )
 
 from core.parser import ParseWorker, SBOMNode
@@ -24,6 +25,10 @@ from core.validator_worker import ValidationWorker
 from core.license_manager import SPDXLicenseManager
 from ui.settings_dialog import SettingsDialog
 from ui.license_check_dialog import LicenseCheckDialog
+from core import VERSION
+from core.excel_io import export_packages, apply_changes
+from core.excel_worker import ExcelImportWorker
+from ui.excel_import_dialog import ExcelImportPreviewDialog
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -34,6 +39,9 @@ class MainWindow(QMainWindow):
         self.current_root_node = None
         self.current_file_path = ""
         self._modified = False  # 未保存の編集があるか
+        self._edit_revision = 0  # 編集のたびに増える通し番号（古い Excel の取り込み検知用）
+        self._excel_busy = False  # Excel 取り込み中か
+        self._excel_progress = None
 
         # SPDX ライセンスマネージャーの初期化（ローカルキャッシュの読み込み）
         self.license_manager = SPDXLicenseManager()
@@ -107,6 +115,14 @@ class MainWindow(QMainWindow):
         save_as_action = file_menu.addAction("名前を付けて保存(&A)...")
         save_as_action.setShortcut("Ctrl+Shift+S")
         save_as_action.triggered.connect(self.save_file_as)
+
+        # --- Excel 連携（Packages の一括編集） ---
+        file_menu.addSeparator()
+        excel_menu = file_menu.addMenu("Excel 連携")
+        self.act_excel_export = excel_menu.addAction("Packages を Excel に出力...")
+        self.act_excel_export.triggered.connect(self.export_packages_to_excel)
+        self.act_excel_import = excel_menu.addAction("Excel から Packages を取り込み...")
+        self.act_excel_import.triggered.connect(self.import_packages_from_excel)
                
 
         file_menu.addSeparator() # 区切り線
@@ -238,6 +254,8 @@ class MainWindow(QMainWindow):
         self.act_cisa_custom.setEnabled(enabled)
         self.action_export_cdx.setEnabled(enabled)
         self.action_export_spdx3ld.setEnabled(enabled)
+        self.act_excel_export.setEnabled(enabled)
+        self.act_excel_import.setEnabled(enabled)
 
     def trigger_validation(self, profile: str):
         """メニューが選ばれた時の統合窓口（10MBチェックと警告を行う）"""
@@ -470,6 +488,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("SBOM parsed. Building tree view...")
         self.current_root_node = root_node
         self._set_modified(False)
+        self._edit_revision = 0
         
         self.tree_view.setUpdatesEnabled(False)
         self.tree_view.header().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
@@ -713,6 +732,7 @@ class MainWindow(QMainWindow):
     def on_detail_node_updated(self, updated_node: SBOMNode):
         """DetailPanel でノードが保存・更新されたとき、ツリービュー側の表示を同期させる"""
         self._set_modified(True)
+        self._edit_revision += 1
         # Document Information の編集内容を DocumentRoot 側の properties にも反映
         # (SPDX3 エクスポート等が root.properties を参照するため)
         if updated_node.node_type == "document_info" and self.current_root_node:
@@ -748,6 +768,203 @@ class MainWindow(QMainWindow):
             return False
 
         find_and_update(QModelIndex())
+
+    # ------------------------------------------------------------------
+    # Excel 連携（Packages の一括編集）
+    # ------------------------------------------------------------------
+    def export_packages_to_excel(self):
+        """全 Packages のスカラー項目を Excel(.xlsx) に出力する"""
+        if not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            return
+        if not self._commit_pending_edit():      # 編集中の内容を先に確定してから出力する
+            return
+
+        base = os.path.splitext(os.path.basename(self.current_file_path))[0] if self.current_file_path else "sbom"
+        default = os.path.join(self.last_dir or "", f"{base}.packages.xlsx")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Packages を Excel に出力", default, "Excel Workbook (*.xlsx)"
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        self.last_dir = os.path.dirname(path)
+        self.settings.setValue("last_directory", self.last_dir)
+
+        error = None
+        result = None
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            result = export_packages(
+                self.current_root_node, path,
+                app_version=VERSION, edit_revision=self._edit_revision,
+            )
+        except PermissionError:
+            error = "ファイルに書き込めません。Excel で開いている場合は閉じてから再実行してください。"
+        except Exception as e:
+            error = f"{type(e).__name__}: {e}"
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if error:
+            self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> Excel 出力失敗: {html.escape(error)}</font>")
+            QMessageBox.critical(self, "Excel 出力エラー", error)
+            return
+        self.compliance_report.append(
+            f"<br><font color='green'><b>[SUCCESS]</b> Packages を Excel に出力しました "
+            f"({result.package_count} 件 / {result.column_count} 列)</font><br>"
+            f"<font color='gray'>File: {html.escape(path)}</font>"
+        )
+        self.status_bar.showMessage(f"Excel に出力しました: {path}")
+
+    def import_packages_from_excel(self):
+        """編集済みの Excel を読み込み、差分をプレビューしてから SBOM に反映する"""
+        if not self.current_root_node:
+            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            return
+        if self._excel_busy:
+            return
+        if not self._commit_pending_edit():
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Excel から Packages を取り込み", self.last_dir, "Excel Workbook (*.xlsx)"
+        )
+        if not path:
+            return
+        self.last_dir = os.path.dirname(path)
+        self.settings.setValue("last_directory", self.last_dir)
+        self._excel_import_path = path
+
+        self._excel_busy = True
+        self.set_validation_menu_enabled(False)       # 取り込み中は他の操作を止める
+        self.compliance_report.append(f"<br><font color='blue'><b>[INFO]</b> Excel の取り込みを開始しました...</font>")
+        self.compliance_report.append(f"<font color='gray'>File: {html.escape(path)}</font>")
+
+        progress = QProgressDialog("Excel を読み込み・解析しています...", "キャンセル", 0, 100, self)
+        progress.setWindowTitle("Excel 取り込み")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setValue(0)
+        progress.show()
+        self._excel_progress = progress
+
+        self.excel_thread = QThread()
+        self.excel_worker = ExcelImportWorker(self.current_root_node, path, self._edit_revision)
+        self.excel_worker.moveToThread(self.excel_thread)
+
+        self.excel_thread.started.connect(self.excel_worker.run)
+        self.excel_worker.progress.connect(self.on_excel_import_progress)
+        self.excel_worker.finished.connect(self.on_excel_import_finished)
+        self.excel_worker.error.connect(self.on_excel_import_error)
+        # run() 実行中はワーカー側のイベントループが回らないため、キャンセルは直接呼び出しで伝える
+        progress.canceled.connect(self.excel_worker.cancel, Qt.ConnectionType.DirectConnection)
+
+        self.excel_worker.finished.connect(self.excel_thread.quit)
+        self.excel_worker.finished.connect(self.excel_worker.deleteLater)
+        self.excel_thread.finished.connect(self.excel_thread.deleteLater)
+        self.excel_worker.error.connect(self.excel_thread.quit)
+        self.excel_worker.error.connect(self.excel_worker.deleteLater)
+
+        self.excel_thread.start()
+
+    def _finish_excel_import_ui(self):
+        """進捗ダイアログを閉じ、メニューを元に戻す"""
+        if self._excel_progress is not None:
+            try:
+                self._excel_progress.canceled.disconnect()   # close() は canceled を発火するため先に切り離す
+            except (RuntimeError, TypeError):
+                pass
+            self._excel_progress.close()
+            self._excel_progress.deleteLater()
+            self._excel_progress = None
+        self._excel_busy = False
+        if self.current_root_node:
+            self.set_validation_menu_enabled(True)
+
+    @Slot(int)
+    def on_excel_import_progress(self, percent: int):
+        if self._excel_progress is not None:
+            self._excel_progress.setValue(percent)
+
+    @Slot(str)
+    def on_excel_import_error(self, error_msg: str):
+        self._finish_excel_import_ui()
+        self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> Excel 取り込み失敗: {html.escape(error_msg)}</font>")
+        self.status_bar.showMessage("Excel の取り込みに失敗しました。")
+        QMessageBox.critical(self, "Excel 取り込みエラー", error_msg)
+
+    @Slot(object)
+    def on_excel_import_finished(self, plan):
+        self._finish_excel_import_ui()
+        if plan is None:
+            self.compliance_report.append("<font color='gray'>[INFO] Excel の取り込みをキャンセルしました。</font>")
+            self.status_bar.showMessage("Excel の取り込みをキャンセルしました。")
+            return
+
+        dialog = ExcelImportPreviewDialog(plan, os.path.basename(self._excel_import_path), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.compliance_report.append("<font color='gray'>[INFO] Excel の取り込みを中止しました（SBOMは変更されていません）。</font>")
+            return
+        self._apply_excel_changes(plan, dialog.selected_changes())
+
+    def _apply_excel_changes(self, plan, selected):
+        """プレビューで承認された差分を SBOM（メモリ上のノード）に反映し、画面を同期する"""
+        result = apply_changes(selected)
+
+        for node in result.nodes:
+            DetailPanel._refresh_node_label(node)
+        self._refresh_tree_items(result.nodes)
+
+        # 詳細パネルに表示中のノードが変わっていたら再表示
+        current = getattr(self.detail_panel, "current_node", None)
+        if current is not None and any(current is n for n in result.nodes):
+            self.detail_panel.update_display(current)
+
+        if result.applied:
+            self._edit_revision += 1
+            self._set_modified(True)
+
+        skipped_errors = plan.error_count
+        self.compliance_report.append(
+            f"<br><font color='green'><b>[SUCCESS]</b> Excel から {len(result.applied)} 項目の変更を反映しました "
+            f"({len(result.nodes)} パッケージ)。</font>"
+        )
+        if skipped_errors or plan.warning_count:
+            self.compliance_report.append(
+                f"<font color='gray'>チェック結果: エラー {skipped_errors} 件（該当セルは未反映） / 警告 {plan.warning_count} 件</font>"
+            )
+        for ch, reason in result.skipped:
+            self.compliance_report.append(
+                f"<font color='orange'>[WARN] {html.escape(ch.spdx_id)} / {html.escape(ch.field)}: {html.escape(reason)}</font>"
+            )
+        if result.applied:
+            self.compliance_report.append(
+                "<font color='gray'>※ 以前の Validation 結果は古くなっています。必要に応じて再実行してください。</font>"
+            )
+        self.status_bar.showMessage(f"Excel から {len(result.applied)} 項目を反映しました（未保存）")
+
+    def _refresh_tree_items(self, nodes):
+        """指定ノードに対応するツリー項目の表示名だけを更新する（ツリー全体は再構築しない）"""
+        targets = {id(n): n for n in nodes}
+        if not targets:
+            return
+        stack = [self.tree_model.invisibleRootItem()]
+        while stack and targets:
+            parent = stack.pop()
+            for row in range(parent.rowCount()):
+                item = parent.child(row, 0)
+                if item is None:
+                    continue
+                node = item.data(Qt.ItemDataRole.UserRole)
+                if node is not None and id(node) in targets:
+                    item.setText(node.name)
+                    del targets[id(node)]
+                if item.rowCount():
+                    stack.append(item)
 
     # ------------------------------------------------------------------
     # 保存処理
