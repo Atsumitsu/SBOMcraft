@@ -811,9 +811,10 @@ class MainWindow(QMainWindow):
             self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> Excel 出力失敗: {html.escape(error)}</font>")
             QMessageBox.critical(self, "Excel 出力エラー", error)
             return
+        list_info = "".join(f" / {sheet} {n} 要素" for sheet, n in result.list_rows.items())
         self.compliance_report.append(
             f"<br><font color='green'><b>[SUCCESS]</b> Packages を Excel に出力しました "
-            f"({result.package_count} 件 / {result.column_count} 列)</font><br>"
+            f"({result.package_count} 件 / {result.column_count} 列{list_info})</font><br>"
             f"<font color='gray'>File: {html.escape(path)}</font>"
         )
         self.status_bar.showMessage(f"Excel に出力しました: {path}")
@@ -929,9 +930,10 @@ class MainWindow(QMainWindow):
             self._set_modified(True)
 
         skipped_errors = plan.error_count
+        n_list = sum(1 for c in result.applied if c.kind == "list")
         self.compliance_report.append(
             f"<br><font color='green'><b>[SUCCESS]</b> Excel から {len(result.applied)} 項目の変更を反映しました "
-            f"({len(result.nodes)} パッケージ)。</font>"
+            f"({len(result.nodes)} パッケージ / うち checksums・externalRefs の一覧 {n_list} 件)。</font>"
         )
         if skipped_errors or plan.warning_count:
             self.compliance_report.append(

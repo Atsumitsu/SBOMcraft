@@ -1,12 +1,12 @@
 {
-  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.0.0-09eb8a13-1b70-4b2a-b18a-16bdea8c5b46",
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.1.0-661c29e1-2fff-4db3-b8f3-ebae6917f147",
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SBOMcraft",
   "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
   "creationInfo": {
-    "created": "2026-11-15T05:32:26Z",
+    "created": "2026-11-17T12:16:28Z",
     "creators": [
       "Person: XZ Manj",
       "Tool: py-sbom-mini-1.1.0"
@@ -16,7 +16,7 @@
     {
       "name": "SBOMcraft",
       "SPDXID": "SPDXRef-RootPackage",
-      "versionInfo": "0.7.0.0",
+      "versionInfo": "0.7.1.0",
       "supplier": "Person: XZ Manj",
       "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
       "filesAnalyzed": false,
@@ -28,14 +28,66 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "dd9d212e0db640fc2f0a30010ec9b90e6669c8fd848708d3c98d7995a26cecff"
+          "checksumValue": "bcb6a41549034dfefd1a19399c2a2c87d6a17027ecac4410b33c2ad134b6953a"
         }
       ],
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:generic/SBOMcraft@0.7.0.0"
+          "referenceLocator": "pkg:generic/SBOMcraft@0.7.1.0"
+        }
+      ]
+    },
+    {
+      "name": "packageurl-python",
+      "SPDXID": "SPDXRef-Package-packageurl-python",
+      "versionInfo": "0.17.6",
+      "supplier": "Organization: the purl authors",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) the purl authors",
+      "summary": "A purl aka. Package URL parser and builder",
+      "homepage": "https://github.com/package-url/packageurl-python",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
+        }
+      ]
+    },
+    {
+      "name": "PySide6",
+      "SPDXID": "SPDXRef-Package-PySide6",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "453eff898da8fdba4c01a0c3152892e3353d0bbf20c68e4a1b4d08b6d3886b22"
         }
       ]
     },
@@ -92,54 +144,132 @@
       ]
     },
     {
-      "name": "PySide6",
-      "SPDXID": "SPDXRef-Package-PySide6",
+      "name": "openpyxl",
+      "SPDXID": "SPDXRef-Package-openpyxl",
+      "versionInfo": "3.1.5",
+      "supplier": "Organization: See AUTHORS",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) See AUTHORS",
+      "summary": "A Python library to read/write Excel 2010 xlsx/xlsm files",
+      "homepage": "https://openpyxl.readthedocs.io",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/openpyxl@3.1.5"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "216b3b8fc441713d39f2b621dbba340dd3b00e35fa226cb71fdcc4e45ff063f3"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_Addons",
+      "SPDXID": "SPDXRef-Package-PySide6-Addons",
       "versionInfo": "6.12.0",
       "supplier": "Organization: Qt for Python Team",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LGPL-3.0-only",
       "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
       "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python bindings for the Qt cross-platform application and UI framework",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (Addons)",
       "homepage": "https://pyside.org",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/pyside6@6.12.0"
+          "referenceLocator": "pkg:pypi/pyside6_addons@6.12.0"
         }
       ],
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "453eff898da8fdba4c01a0c3152892e3353d0bbf20c68e4a1b4d08b6d3886b22"
+          "checksumValue": "7acb50c097c554cce109d568eb891a3b76820218a4ed0cee0d74045b92908b37"
         }
       ]
     },
     {
-      "name": "packageurl-python",
-      "SPDXID": "SPDXRef-Package-packageurl-python",
-      "versionInfo": "0.17.6",
-      "supplier": "Organization: the purl authors",
+      "name": "PySide6_Essentials",
+      "SPDXID": "SPDXRef-Package-PySide6-Essentials",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
-      "licenseConcluded": "MIT",
-      "licenseDeclared": "MIT",
-      "copyrightText": "Copyright (c) the purl authors",
-      "summary": "A purl aka. Package URL parser and builder",
-      "homepage": "https://github.com/package-url/packageurl-python",
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (Essentials)",
+      "homepage": "https://pyside.org",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+          "referenceLocator": "pkg:pypi/pyside6_essentials@6.12.0"
         }
       ],
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
+          "checksumValue": "ac0ec3aa3bd41811343d68b30fe3118ecd9aa95aa6bde00f1fbbe0d08b066d62"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_Pdf",
+      "SPDXID": "SPDXRef-Package-PySide6-Pdf",
+      "versionInfo": "6.12.0.140",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (Pdf)",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6_pdf@6.12.0.140"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "0700d2a7e165321fbccbf1422121ae820dc7e885e919076dda40d8108f7615dd"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_WebEngine",
+      "SPDXID": "SPDXRef-Package-PySide6-WebEngine",
+      "versionInfo": "6.12.0.140",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (WebEngine)",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6_webengine@6.12.0.140"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e15965c7e43f2980a0adfe04f7aef1bc53b56bc07f25fb83f8d7235b6cd99735"
         }
       ]
     },
@@ -222,106 +352,54 @@
       ]
     },
     {
-      "name": "PySide6_Addons",
-      "SPDXID": "SPDXRef-Package-PySide6-Addons",
+      "name": "et_xmlfile",
+      "SPDXID": "SPDXRef-Package-et-xmlfile",
+      "versionInfo": "2.0.0",
+      "supplier": "Organization: See AUTHORS.txt",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) See AUTHORS.txt",
+      "summary": "An implementation of lxml.xmlfile for the standard library",
+      "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/et_xmlfile@2.0.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3d9bd234d7d32f64c3cb2c69651bca279929c3ddab02515ef862bfb7e52f220b"
+        }
+      ]
+    },
+    {
+      "name": "shiboken6",
+      "SPDXID": "SPDXRef-Package-shiboken6",
       "versionInfo": "6.12.0",
       "supplier": "Organization: Qt for Python Team",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "licenseConcluded": "LGPL-3.0-only",
       "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
       "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python bindings for the Qt cross-platform application and UI framework (Addons)",
+      "summary": "Python/C++ bindings helper module",
       "homepage": "https://pyside.org",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/pyside6_addons@6.12.0"
+          "referenceLocator": "pkg:pypi/shiboken6@6.12.0"
         }
       ],
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "7acb50c097c554cce109d568eb891a3b76820218a4ed0cee0d74045b92908b37"
-        }
-      ]
-    },
-    {
-      "name": "PySide6_Essentials",
-      "SPDXID": "SPDXRef-Package-PySide6-Essentials",
-      "versionInfo": "6.12.0",
-      "supplier": "Organization: Qt for Python Team",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python bindings for the Qt cross-platform application and UI framework (Essentials)",
-      "homepage": "https://pyside.org",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/pyside6_essentials@6.12.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "ac0ec3aa3bd41811343d68b30fe3118ecd9aa95aa6bde00f1fbbe0d08b066d62"
-        }
-      ]
-    },
-    {
-      "name": "PySide6_Pdf",
-      "SPDXID": "SPDXRef-Package-PySide6-Pdf",
-      "versionInfo": "6.12.0.140",
-      "supplier": "Organization: Qt for Python Team",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python bindings for the Qt cross-platform application and UI framework (Pdf)",
-      "homepage": "https://pyside.org",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/pyside6_pdf@6.12.0.140"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "0700d2a7e165321fbccbf1422121ae820dc7e885e919076dda40d8108f7615dd"
-        }
-      ]
-    },
-    {
-      "name": "PySide6_WebEngine",
-      "SPDXID": "SPDXRef-Package-PySide6-WebEngine",
-      "versionInfo": "6.12.0.140",
-      "supplier": "Organization: Qt for Python Team",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python bindings for the Qt cross-platform application and UI framework (WebEngine)",
-      "homepage": "https://pyside.org",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/pyside6_webengine@6.12.0.140"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "e15965c7e43f2980a0adfe04f7aef1bc53b56bc07f25fb83f8d7235b6cd99735"
+          "checksumValue": "6294a37825eb2cb5b3eee91546c735fc1790f3da04cefcac945f495221c0b656"
         }
       ]
     },
@@ -347,7 +425,7 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "0d0eb68f0f169182613dc64b3ab50b20855508c1c1d2faafe8fccf23edb6a345"
+          "checksumValue": "44c650ebd833d852c8731fa3f0c5759506309622300e4c1954a540d78572cc54"
         }
       ]
     },
@@ -376,32 +454,6 @@
           "checksumValue": "f494c4996d3db354933ac0f6bb4ac38d3323ec685a6a3369cf1fabff330ac97b"
         }
       ]
-    },
-    {
-      "name": "shiboken6",
-      "SPDXID": "SPDXRef-Package-shiboken6",
-      "versionInfo": "6.12.0",
-      "supplier": "Organization: Qt for Python Team",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python/C++ bindings helper module",
-      "homepage": "https://pyside.org",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/shiboken6@6.12.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6294a37825eb2cb5b3eee91546c735fc1790f3da04cefcac945f495221c0b656"
-        }
-      ]
     }
   ],
   "relationships": [
@@ -428,27 +480,12 @@
     {
       "spdxElementId": "SPDXRef-RootPackage",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
+      "relatedSpdxElement": "SPDXRef-Package-openpyxl"
     },
     {
-      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-license-expression"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "spdxElementId": "SPDXRef-RootPackage",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-py-serializable"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-sortedcontainers"
     },
     {
       "spdxElementId": "SPDXRef-Package-PySide6",
@@ -471,14 +508,24 @@
       "relatedSpdxElement": "SPDXRef-Package-PySide6-WebEngine"
     },
     {
-      "spdxElementId": "SPDXRef-Package-license-expression",
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-boolean.py"
+      "relatedSpdxElement": "SPDXRef-Package-license-expression"
     },
     {
-      "spdxElementId": "SPDXRef-Package-py-serializable",
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
       "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-defusedxml"
+      "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-py-serializable"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-sortedcontainers"
     },
     {
       "spdxElementId": "SPDXRef-Package-PySide6-Addons",
@@ -499,6 +546,16 @@
       "spdxElementId": "SPDXRef-Package-PySide6-WebEngine",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-PySide6-Addons"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-license-expression",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-boolean.py"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-py-serializable",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-defusedxml"
     }
   ],
   "hasExtractedLicensingInfos": [

@@ -83,7 +83,7 @@ class AboutDialog(QDialog):
  # ★【修正】ハードコードをやめ、インポートした変数を埋め込むように変更
         title_label = QLabel(
             "<div style='margin-top: 5px;'>"
-            "<h2 style='margin: 0; color: #2c3e50;'>SBOMcraft</h2>"
+            "<h2 style='margin: 0; color: #2c3e50;'>SBOMCraft</h2>"
             f"<p style='margin: 4px 0 0 0; color: #555;'><b>Version:</b> {VERSION}</p>"
             "</div>"
         )
@@ -128,6 +128,11 @@ class AboutDialog(QDialog):
             <li>
                 <b>packageurl-python</b><br>
                 License: MIT<br>
+            </li>
+            <li>
+                <b>openpyxl</b><br>
+                License: MIT<br>
+                Author: Eric Gazoni, Charlie Clark<br>
             </li>
             <li>
                 <b>Lucide Icons (https://lucide.dev)</b><br>

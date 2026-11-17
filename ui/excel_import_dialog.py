@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
-from core.excel_io import CellChange, ImportPlan, describe_value
+from core.excel_io import CellChange, ImportPlan, describe_entries, describe_value
 
 _MAX_CELL_PREVIEW = 120
 _COLOR_ERROR = QColor("#FFCCCC")      # 検証結果のハイライトと同じ色
@@ -37,9 +37,13 @@ class ExcelImportPreviewDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        n_list = sum(1 for c in plan.changes if c.kind == "list")
+        list_info = "".join(f" / {sheet} {n} パッケージ" for sheet, n in plan.list_stats.items())
         summary = (
             f"<b>{file_name}</b><br>"
-            f"対象 {plan.rows_matched} 行 / 変更あり {plan.packages_changed} パッケージ・{len(plan.changes)} 項目"
+            f"対象 Packages {plan.rows_matched} 行{list_info}"
+            f" / 変更あり {plan.packages_changed} パッケージ・{len(plan.changes)} 項目"
+            f"（うち一覧 {n_list}）"
             f" / <span style='color:#C62828'>エラー {plan.error_count}</span>"
             f" / <span style='color:#B26A00'>警告 {plan.warning_count}</span>"
         )
@@ -57,6 +61,11 @@ class ExcelImportPreviewDialog(QDialog):
         layout.addWidget(self.tabs, 1)
         if not plan.changes and plan.issues:
             self.tabs.setCurrentIndex(1)
+        if n_list:
+            hint = QLabel("※ checksums / externalRefs は『－: 削除される要素 / ＋: 追加される要素』を表示します"
+                          "（一覧全体はセルにマウスを載せると確認できます）。")
+            hint.setStyleSheet("color:#555;")
+            layout.addWidget(hint)
 
         # --- ボタン ---
         row = QHBoxLayout()
@@ -98,27 +107,47 @@ class ExcelImportPreviewDialog(QDialog):
             chk.setData(Qt.ItemDataRole.UserRole, r)          # 並べ替えても元の変更を引けるように
             table.setItem(r, _COL_CHECK, chk)
 
-            new_text = "(削除)" if ch.op == "delete" else describe_value(ch.new)
+            if ch.kind == "list":
+                # 一覧は『削除される要素 / 追加される要素』を並べて見せる（全体は吹き出しで確認）
+                field_text = f"{ch.field}（＋{len(ch.added)} / －{len(ch.removed)}）"
+                old_text = describe_entries(ch.field, ch.removed, "－ ") or "(削除される要素なし)"
+                if ch.op == "delete":
+                    new_text = "(一覧ごと削除)"
+                else:
+                    new_text = describe_entries(ch.field, ch.added, "＋ ") or "(追加される要素なし)"
+                old_tip = "変更前の一覧:\n" + describe_value(ch.old, ch.field)
+                new_tip = "変更後の一覧:\n" + (describe_entries(ch.field, ch.new) or "(空)")
+                old_color = _COLOR_DELETE if ch.removed else None
+                new_color = _COLOR_DELETE if ch.op == "delete" else (_COLOR_ADD if ch.added else None)
+            else:
+                field_text = ch.field
+                old_text = describe_value(ch.old)
+                new_text = "(削除)" if ch.op == "delete" else describe_value(ch.new)
+                old_tip, new_tip = old_text, new_text
+                old_color = None
+                new_color = _COLOR_DELETE if ch.op == "delete" else (_COLOR_ADD if ch.op == "add" else None)
+
             cells = {
-                _COL_ID: ch.spdx_id, _COL_PKG: ch.package_name, _COL_FIELD: ch.field,
-                _COL_OLD: describe_value(ch.old), _COL_NEW: new_text, _COL_CELL: ch.cell,
+                _COL_ID: (ch.spdx_id, ch.spdx_id, None),
+                _COL_PKG: (ch.package_name, ch.package_name, None),
+                _COL_FIELD: (field_text, field_text, None),
+                _COL_OLD: (old_text, old_tip, old_color),
+                _COL_NEW: (new_text, new_tip, new_color),
+                _COL_CELL: (ch.cell, ch.cell, None),
             }
-            full = {_COL_OLD: describe_value(ch.old), _COL_NEW: new_text}
-            for col, text in cells.items():
+            for col, (text, tip, color) in cells.items():
                 it = QTableWidgetItem(_short(text))
                 it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
-                it.setToolTip(full.get(col, text))
-                if col == _COL_NEW and ch.op == "delete":
-                    it.setForeground(_COLOR_DELETE)
-                elif col == _COL_NEW and ch.op == "add":
-                    it.setForeground(_COLOR_ADD)
+                it.setToolTip(tip)
+                if color is not None:
+                    it.setForeground(color)
                 table.setItem(r, col, it)
         table.blockSignals(False)
 
         hdr = table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         hdr.setStretchLastSection(False)
-        for col, w in {_COL_CHECK: 50, _COL_ID: 210, _COL_PKG: 170, _COL_FIELD: 130,
+        for col, w in {_COL_CHECK: 50, _COL_ID: 210, _COL_PKG: 170, _COL_FIELD: 170,
                        _COL_OLD: 220, _COL_NEW: 220, _COL_CELL: 60}.items():
             table.setColumnWidth(col, w)
         table.setSortingEnabled(True)

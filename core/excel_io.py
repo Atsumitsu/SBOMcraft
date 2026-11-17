@@ -18,6 +18,14 @@ Qt には依存しない（ノードは node_type / properties / children を持
 * 行の主キーは SPDXID。並べ替え・フィルタ・列の並べ替え/削除をしても壊れない。
   Excel に無い行・列は「変更なし」と扱い、削除はしない。
 * 変更のなかったセルは検証しない（元データが仕様違反でも、触らなければエラーにならない）。
+
+Phase 2: 入れ子の一覧（checksums / externalRefs）は別シート（Checksums / ExternalRefs）に
+1 要素 = 1 行で出力する。取り込みは『パッケージ単位の一覧』として扱う:
+* 同じ SPDXID の行の集合 = そのパッケージの一覧。シートに現れないパッケージは変更しない。
+* 既存要素との突合は『内容が同じ行』で行う（順序非依存）ので、並べ替えても差分にならない。
+  行の削除 = 要素の削除、行の追加 = 要素の追加、値の変更 = 削除 + 追加。
+* 内容が変わっていない要素は元の dict をそのまま残す（Excel に出していないキーも保持される）。
+* 新規・変更された要素だけを検証し、エラーがあればその一覧（パッケージ単位）は反映しない。
 """
 
 from __future__ import annotations
@@ -45,9 +53,11 @@ from core.serializer import PACKAGE_PRIORITY_KEYS   # 列順は DetailPanel の�
 # 定数
 # ---------------------------------------------------------------------------
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2          # 2: Checksums / ExternalRefs シートを追加（Phase 2）
 SHEET_META = "_meta"
 SHEET_PACKAGES = "Packages"
+SHEET_CHECKSUMS = "Checksums"
+SHEET_EXTERNALREFS = "ExternalRefs"
 
 MAX_CELL_CHARS = 32767          # Excel のセル文字数上限
 TOO_LONG_MARKER = "⚠(32767文字超のため未出力・取り込み時は無視されます)"
@@ -64,7 +74,8 @@ PRIMARY_PACKAGE_PURPOSES: Tuple[str, ...] = (
     "DEVICE", "FIRMWARE", "SOURCE", "ARCHIVE", "FILE", "INSTALL", "OTHER",
 )
 
-# Phase 1 では扱わない（入れ子構造）キー。データ側にスカラーで入っていても列にしない。
+# Packages シートの列にしない（入れ子構造）キー。データ側にスカラーで入っていても列にしない。
+# checksums / externalRefs は専用シート、それ以外は Excel では扱わない（常に保持される）。
 NON_SCALAR_KEYS = frozenset({
     "checksums", "externalRefs", "attributionTexts", "licenseInfoFromFiles",
     "hasFiles", "annotations", "packageVerificationCode",
@@ -78,6 +89,8 @@ class FieldSpec:
     required: bool = False
     readonly: bool = False
     choices: Tuple[str, ...] = ()
+    extra_choices: Tuple[str, ...] = ()   # 入力は受け付けるが、プルダウンには出さない（旧表記など）
+    suggestions: Tuple[str, ...] = ()     # プルダウン候補（候補以外も入力可）
     width: int = 24
     help: str = ""
 
@@ -116,6 +129,58 @@ PACKAGE_FIELD_SPECS.sort(key=lambda sp: (PACKAGE_PRIORITY_KEYS.index(sp.key)
                                          if sp.key in PACKAGE_PRIORITY_KEYS else len(PACKAGE_PRIORITY_KEYS)))
 _KNOWN_SPECS: Dict[str, FieldSpec] = {s.key: s for s in PACKAGE_FIELD_SPECS}
 
+# --- Phase 2: 一覧シート（Checksums / ExternalRefs） ---------------------------------
+
+CHECKSUM_ALGORITHMS: Tuple[str, ...] = (
+    "SHA1", "SHA224", "SHA256", "SHA384", "SHA512", "SHA3-256", "SHA3-384", "SHA3-512",
+    "BLAKE2b-256", "BLAKE2b-384", "BLAKE2b-512", "BLAKE3", "MD2", "MD4", "MD5", "MD6", "ADLER32",
+)
+# 16進数の桁数が固定のアルゴリズム（BLAKE3 / MD6 は可変長のため桁数チェックしない）
+_HASH_HEX_LENGTHS: Dict[str, int] = {
+    "SHA1": 40, "SHA224": 56, "SHA256": 64, "SHA384": 96, "SHA512": 128,
+    "SHA3-256": 64, "SHA3-384": 96, "SHA3-512": 128,
+    "BLAKE2b-256": 64, "BLAKE2b-384": 96, "BLAKE2b-512": 128,
+    "MD2": 32, "MD4": 32, "MD5": 32, "ADLER32": 8,
+}
+REFERENCE_CATEGORIES: Tuple[str, ...] = ("SECURITY", "PACKAGE-MANAGER", "PERSISTENT-ID", "OTHER")
+LEGACY_REFERENCE_CATEGORIES: Tuple[str, ...] = ("PACKAGE_MANAGER", "PERSISTENT_ID")   # SPDX 2.2 の表記
+# SPDX 2.3 で定義済みの referenceType と、その通常のカテゴリ
+KNOWN_REFERENCE_TYPES: Dict[str, str] = {
+    "cpe22Type": "SECURITY", "cpe23Type": "SECURITY", "advisory": "SECURITY",
+    "fix": "SECURITY", "url": "SECURITY", "swid": "SECURITY",
+    "maven-central": "PACKAGE-MANAGER", "npm": "PACKAGE-MANAGER", "nuget": "PACKAGE-MANAGER",
+    "bower": "PACKAGE-MANAGER", "purl": "PACKAGE-MANAGER",
+    "swh": "PERSISTENT-ID", "gitoid": "PERSISTENT-ID",
+}
+# referenceType ごとに referenceLocator が満たすべき接頭辞
+_REF_LOCATOR_PREFIX: Dict[str, str] = {"purl": "pkg:", "cpe23Type": "cpe:2.3:", "cpe22Type": "cpe:/"}
+
+
+@dataclass(frozen=True)
+class ListSheetSpec:
+    sheet: str
+    list_key: str                       # properties 上のキー
+    columns: Tuple[FieldSpec, ...]      # SPDXID / name 以外の列
+
+
+CHECKSUM_SHEET_SPEC = ListSheetSpec(SHEET_CHECKSUMS, "checksums", (
+    FieldSpec("algorithm", kind="enum", required=True, choices=CHECKSUM_ALGORITHMS, width=16,
+              help="ハッシュアルゴリズム（リストから選択）。"),
+    FieldSpec("checksumValue", required=True, width=72,
+              help="16進数のハッシュ値。SHA256 は 64 桁、SHA1 は 40 桁、MD5 は 32 桁。"),
+))
+EXTERNALREFS_SHEET_SPEC = ListSheetSpec(SHEET_EXTERNALREFS, "externalRefs", (
+    FieldSpec("referenceCategory", kind="enum", required=True, choices=REFERENCE_CATEGORIES,
+              extra_choices=LEGACY_REFERENCE_CATEGORIES, width=20,
+              help="SECURITY / PACKAGE-MANAGER / PERSISTENT-ID / OTHER。"),
+    FieldSpec("referenceType", required=True, width=18, suggestions=tuple(KNOWN_REFERENCE_TYPES),
+              help="例: purl, cpe23Type, advisory, npm, maven-central ..."),
+    FieldSpec("referenceLocator", required=True, width=60,
+              help="例: pkg:pypi/requests@2.32.0（purl は 'pkg:' で始まる）。"),
+    FieldSpec("comment", width=36, help="コメント（任意）。"),
+))
+LIST_SHEET_SPECS: Tuple[ListSheetSpec, ...] = (CHECKSUM_SHEET_SPEC, EXTERNALREFS_SHEET_SPEC)
+
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _AGENT_RE = re.compile(r"^(Person|Organization): \S.*$", re.DOTALL)
 _DATE_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -150,6 +215,10 @@ class CellChange:
     op: str                  # "set" / "add"（キー新規追加） / "delete"
     cell: str                # 例: "C5"
     node: Any = field(default=None, repr=False, compare=False)
+    # --- 一覧（checksums / externalRefs）の変更のとき ---
+    kind: str = "scalar"                                   # "scalar" / "list"
+    added: List[Any] = field(default_factory=list, compare=False)     # 追加される要素
+    removed: List[Any] = field(default_factory=list, compare=False)   # 削除される要素
 
 
 @dataclass
@@ -158,6 +227,7 @@ class ImportPlan:
     issues: List[ImportIssue] = field(default_factory=list)
     rows_total: int = 0
     rows_matched: int = 0
+    list_stats: Dict[str, int] = field(default_factory=dict)   # シート名 → 突合できたパッケージ数
 
     @property
     def packages_changed(self) -> int:
@@ -180,11 +250,20 @@ class RowData:
 
 
 @dataclass
-class ParsedWorkbook:
-    meta: Dict[str, Any]
+class ParsedTable:
     headers: Dict[str, int]                    # 見出し名 → 0 始まりの列番号
     rows: List[RowData]
     duplicate_headers: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ParsedWorkbook:
+    meta: Dict[str, Any]
+    headers: Dict[str, int]                    # Packages シート: 見出し名 → 0 始まりの列番号
+    rows: List[RowData]
+    duplicate_headers: List[str] = field(default_factory=list)
+    child_tables: Dict[str, ParsedTable] = field(default_factory=dict)   # Checksums / ExternalRefs
+    child_errors: Dict[str, str] = field(default_factory=dict)           # 読み込めなかった一覧シート
 
 
 @dataclass
@@ -198,6 +277,7 @@ class ApplyResult:
 class ExportResult:
     package_count: int
     column_count: int
+    list_rows: Dict[str, int] = field(default_factory=dict)   # シート名 → 出力した要素数
 
 
 # ---------------------------------------------------------------------------
@@ -302,13 +382,18 @@ def _cell_text_for(props: Dict[str, Any], key: str) -> Optional[str]:
 
 
 _GUIDE_LINES = [
-    "1. 編集するのは Packages シートです。SPDXID 列（灰色）は行の識別キーなので変更しないでください（並べ替え・フィルタは可能です）。",
+    "1. 編集するのは Packages / Checksums / ExternalRefs の各シートです。SPDXID 列（灰色）は行の識別キーなので変更しないでください（並べ替え・フィルタは可能です）。",
     "2. 列の並べ替えや不要な列の削除は可能です。1行目の見出しは変更しないでください。見出しが無い項目は変更されません。",
-    "3. セルを空にすると、その項目は SBOM から削除されます。ただし name と downloadLocation は必須です（不明な場合は NOASSERTION）。",
-    "4. 行の追加・削除は反映されません。SBOM に無い SPDXID の行は無視され、Excel から消した行も SBOM からは削除されません。",
+    "3. 【Packages】セルを空にすると、その項目は SBOM から削除されます。ただし name と downloadLocation は必須です（不明な場合は NOASSERTION）。",
+    "4. 【Packages】行の追加・削除は反映されません。SBOM に無い SPDXID の行は無視され、Excel から消した行も SBOM からは削除されません。",
     "5. 全セルをテキスト書式にしています。数値・日付として貼り付けると元の表記（例: 1.10 → 1.1）が変わることがあります。",
-    "6. checksums / externalRefs など入れ子の項目は、この取り込みでは変更されません。",
-    "7. SBOMcraft で取り込むと、反映前に変更点の一覧（プレビュー）を確認できます。",
+    "6. 【Checksums / ExternalRefs】1 要素 = 1 行です。同じ SPDXID の行が、そのパッケージの一覧になります。name 列は参考表示で、変更しても無視されます。",
+    "7. 【同上】要素を追加するには、同じ SPDXID の行を追加（コピー）して入力します。要素が無いパッケージには、入力用の空行を用意しています。",
+    "8. 【同上】行を削除すると、その要素が SBOM から削除されます。ただし、あるパッケージの行をすべて削除した場合は『変更なし』として扱います。",
+    "    一覧を空にしたいときは、そのパッケージの行を 1 行だけ残し、値をすべて空にしてください。",
+    "9. 【同上】値を変えた要素は『削除 + 追加』として扱われます（追加された要素は一覧の末尾に付きます）。並べ替えは反映されません。",
+    "10. 取り込み時は、新規・変更された要素だけを検証します（algorithm の種類、ハッシュの桁数と16進数、purl の接頭辞など）。エラーのある一覧は、パッケージ単位で反映されません。",
+    "11. SBOMcraft で取り込むと、反映前に変更点の一覧（プレビュー）を確認できます。",
 ]
 
 _FORMAT_EXAMPLES = [
@@ -317,6 +402,9 @@ _FORMAT_EXAMPLES = [
     ("licenseConcluded / licenseDeclared", "Apache-2.0 AND MIT", "SPDX ライセンス式 / NOASSERTION / NONE"),
     ("primaryPackagePurpose", "LIBRARY", "APPLICATION, FRAMEWORK, LIBRARY, CONTAINER, OPERATING-SYSTEM, ..."),
     ("releaseDate / builtDate", "2026-01-31T00:00:00Z", "YYYY-MM-DDThh:mm:ssZ（UTC）"),
+    ("algorithm / checksumValue", "SHA256 / e3b0c44298fc1c14...（64桁）", "ハッシュは16進数。SHA1=40桁 / SHA256=64桁 / SHA512=128桁 / MD5=32桁"),
+    ("referenceCategory / referenceType", "PACKAGE-MANAGER / purl", "SECURITY, PACKAGE-MANAGER, PERSISTENT-ID, OTHER"),
+    ("referenceLocator", "pkg:pypi/requests@2.32.0", "purl は pkg: 、cpe23Type は cpe:2.3: で始まる"),
 ]
 
 
@@ -359,7 +447,9 @@ def _write_packages_sheet(ws, nodes: List[Any], columns: List[FieldSpec]) -> Non
     # write_only モードでは、列幅・ウィンドウ枠固定は最初の append より前に設定する
     ws.freeze_panes = "C2"
     for idx, spec in enumerate(columns, start=1):
-        ws.column_dimensions[get_column_letter(idx)].width = spec.width
+        dim = ws.column_dimensions[get_column_letter(idx)]
+        dim.width = spec.width
+        dim.number_format = "@"        # 後から入力したセルもテキスト扱いにする
 
     header = []
     for spec in columns:
@@ -386,19 +476,98 @@ def _write_packages_sheet(ws, nodes: List[Any], columns: List[FieldSpec]) -> Non
 
     if nodes:
         for idx, spec in enumerate(columns, start=1):
-            letter = get_column_letter(idx)
             if spec.kind == "bool":
-                formula = '"true,false"'
+                _add_list_validation(ws, get_column_letter(idx), ("true", "false"), last_row,
+                                     strict=True, label=spec.key)
             elif spec.kind == "enum" and spec.choices:
-                formula = '"' + ",".join(spec.choices) + '"'
-            else:
-                continue
-            dv = DataValidation(type="list", formula1=formula, allow_blank=True,
-                                showErrorMessage=True, errorStyle="stop",
-                                errorTitle="入力エラー",
-                                error=f"{spec.key} は次の値から選択してください: " + formula.strip('"'))
-            dv.add(f"{letter}2:{letter}{last_row}")
-            ws.data_validations.append(dv)   # WriteOnlyWorksheet に add_data_validation は無い
+                _add_list_validation(ws, get_column_letter(idx), spec.choices, last_row,
+                                     strict=True, label=spec.key)
+
+
+_DV_EXTRA_ROWS = 1000     # 一覧シートは行を追加できるので、入力規則を末尾の先まで広げておく
+
+
+def _add_list_validation(ws, letter: str, items, last_row: int, *, strict: bool, label: str) -> None:
+    """プルダウン（リスト形式の入力規則）。strict=False は候補以外の入力も許可する。"""
+    formula = '"' + ",".join(items) + '"'
+    if len(formula) > 255:                      # Excel の上限。超えるとファイルが壊れる
+        return
+    msg = f"{label} は次の値から選択してください: " + ", ".join(items)
+    if not strict:
+        msg += "（他の値も入力できます）"
+    dv = DataValidation(type="list", formula1=formula, allow_blank=True, showErrorMessage=True,
+                        errorStyle="stop" if strict else "information",
+                        errorTitle="入力エラー" if strict else "入力の確認",
+                        error=msg[:255])        # エラーメッセージも 255 文字が上限
+    dv.add(f"{letter}2:{letter}{last_row}")
+    ws.data_validations.append(dv)              # WriteOnlyWorksheet に add_data_validation は無い
+
+
+def _list_entries_or_none(node, list_key: str) -> Optional[List[Dict[str, Any]]]:
+    """標準的な構造（dict の配列）なら要素のリスト、未設定なら []、非標準な構造なら None。"""
+    val = node.properties.get(list_key)
+    if val is None:
+        return []
+    if isinstance(val, list) and all(isinstance(e, dict) for e in val):
+        return val
+    return None
+
+
+def _list_sheet_columns(spec: ListSheetSpec) -> List[FieldSpec]:
+    return [
+        FieldSpec("SPDXID", readonly=True, width=34,
+                  help="行の識別キーです。変更しないでください（並べ替え・フィルタは可）。"),
+        FieldSpec("name", readonly=True, width=28,
+                  help="参考用のパッケージ名です。変更しても無視されます。"),
+    ] + list(spec.columns)
+
+
+def _write_list_sheet(ws, nodes: List[Any], spec: ListSheetSpec) -> int:
+    """1 要素 = 1 行。要素の無いパッケージには入力用の空行を 1 行出す。出力した要素数を返す。"""
+    columns = _list_sheet_columns(spec)
+    ws.freeze_panes = "C2"
+    for idx, col in enumerate(columns, start=1):
+        dim = ws.column_dimensions[get_column_letter(idx)]
+        dim.width = col.width
+        dim.number_format = "@"
+
+    header = []
+    for col in columns:
+        c = _text_cell(ws, col.key, font=_FONT_HEAD, fill=_FILL_HEAD_RO if col.readonly else _FILL_HEAD)
+        if col.help:
+            cm = Comment(col.help, "SBOMcraft")
+            cm.width, cm.height = 280, 80
+            c.comment = cm
+        header.append(c)
+    ws.append(header)
+
+    entry_count = 0
+    last_row = 1
+    for node in nodes:
+        entries = _list_entries_or_none(node, spec.list_key)
+        if entries is None:
+            continue                            # 非標準な構造のパッケージは出さない（取り込みでも触らない）
+        props = node.properties
+        sid = _cell_text_for(props, "SPDXID")
+        name = _cell_text_for(props, "name")
+        for entry in (entries or [None]):       # 要素が無ければ入力用の空行
+            row = [_text_cell(ws, sid, fill=_FILL_RO), _text_cell(ws, name, fill=_FILL_RO)]
+            for col in spec.columns:
+                row.append(_text_cell(ws, None if entry is None else _cell_text_for(entry, col.key)))
+            ws.append(row)
+            last_row += 1
+            if entry is not None:
+                entry_count += 1
+
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{last_row}"
+    dv_last = last_row + _DV_EXTRA_ROWS
+    for idx, col in enumerate(columns, start=1):
+        letter = get_column_letter(idx)
+        if col.kind == "enum" and col.choices:
+            _add_list_validation(ws, letter, col.choices, dv_last, strict=True, label=col.key)
+        elif col.suggestions:
+            _add_list_validation(ws, letter, col.suggestions, dv_last, strict=False, label=col.key)
+    return entry_count
 
 
 def _save_atomic(wb: Workbook, path: str) -> None:
@@ -429,11 +598,13 @@ def export_packages(root_node, path: str, *, app_version: str = "",
     wb.properties.title = "SBOMcraft Packages"
     ws_meta = wb.create_sheet(SHEET_META)
     ws_pkg = wb.create_sheet(SHEET_PACKAGES)
+    list_sheets = [(spec, wb.create_sheet(spec.sheet)) for spec in LIST_SHEET_SPECS]
     _write_meta_sheet(ws_meta, nodes, root_node, app_version, edit_revision)
     _write_packages_sheet(ws_pkg, nodes, columns)
+    list_rows = {spec.sheet: _write_list_sheet(ws, nodes, spec) for spec, ws in list_sheets}
     wb.active = 1                      # Packages シートを開いた状態にする
     _save_atomic(wb, path)
-    return ExportResult(package_count=len(nodes), column_count=len(columns))
+    return ExportResult(package_count=len(nodes), column_count=len(columns), list_rows=list_rows)
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +647,23 @@ def read_workbook(path: str) -> ParsedWorkbook:
                 f"'{SHEET_PACKAGES}' シートが見つかりません。SBOMcraft が出力した Excel を使ってください。")
 
         meta = _read_meta(wb_vals[SHEET_META]) if SHEET_META in wb_vals.sheetnames else {}
-        return _read_packages_sheet(wb_vals[SHEET_PACKAGES], wb_forms[SHEET_PACKAGES], meta)
+        packages = _read_table(wb_vals[SHEET_PACKAGES], wb_forms[SHEET_PACKAGES], SHEET_PACKAGES)
+
+        # 一覧シート（Phase 2）は任意。無ければ「変更なし」、読めなければエラーとして記録する
+        child_tables: Dict[str, ParsedTable] = {}
+        child_errors: Dict[str, str] = {}
+        for spec in LIST_SHEET_SPECS:
+            if spec.sheet not in wb_vals.sheetnames:
+                continue
+            try:
+                child_tables[spec.sheet] = _read_table(wb_vals[spec.sheet], wb_forms[spec.sheet], spec.sheet)
+            except WorkbookFormatError as e:
+                child_errors[spec.sheet] = str(e)
+        return ParsedWorkbook(
+            meta=meta, headers=packages.headers, rows=packages.rows,
+            duplicate_headers=packages.duplicate_headers,
+            child_tables=child_tables, child_errors=child_errors,
+        )
     finally:
         for wb in (wb_vals, wb_forms):
             if wb is not None:
@@ -496,7 +683,8 @@ def _is_blank(v: Any) -> bool:
     return v is None or (isinstance(v, str) and v.strip() == "")
 
 
-def _read_packages_sheet(ws_vals, ws_forms, meta: Dict[str, Any]) -> ParsedWorkbook:
+def _read_table(ws_vals, ws_forms, title: str) -> ParsedTable:
+    """1 行目を見出し（SPDXID 列が必須）として表を読む。Packages / Checksums / ExternalRefs 共通。"""
     ws_vals.reset_dimensions()          # 寸法情報が不正なファイルでも全行を読む
     ws_forms.reset_dimensions()
 
@@ -511,7 +699,7 @@ def _read_packages_sheet(ws_vals, ws_forms, meta: Dict[str, Any]) -> ParsedWorkb
     try:
         first = next(rows_iter)
     except StopIteration:
-        raise WorkbookFormatError(f"'{SHEET_PACKAGES}' シートが空です。") from None
+        raise WorkbookFormatError(f"'{title}' シートが空です。") from None
 
     headers: Dict[str, int] = {}
     dups: List[str] = []
@@ -523,7 +711,7 @@ def _read_packages_sheet(ws_vals, ws_forms, meta: Dict[str, Any]) -> ParsedWorkb
             else:
                 headers[name] = idx
     if "SPDXID" not in headers:
-        raise WorkbookFormatError("1行目に 'SPDXID' 列がありません。1行目の見出しを変更していないか確認してください。")
+        raise WorkbookFormatError(f"'{title}' シートの1行目に 'SPDXID' 列がありません。1行目の見出しを変更していないか確認してください。")
 
     rows: List[RowData] = []
     for row_no, values in enumerate(rows_iter, start=2):
@@ -537,7 +725,7 @@ def _read_packages_sheet(ws_vals, ws_forms, meta: Dict[str, Any]) -> ParsedWorkb
         if all(_is_blank(v) for v in vals.values()) and not fcols:
             continue                                    # 完全な空行
         rows.append(RowData(row=row_no, values=vals, formula_cols=frozenset(fcols)))
-    return ParsedWorkbook(meta=meta, headers=headers, rows=rows, duplicate_headers=dups)
+    return ParsedTable(headers=headers, rows=rows, duplicate_headers=dups)
 
 
 # ---------------------------------------------------------------------------
@@ -708,6 +896,229 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
     return ("set" if old_present else "add"), new, notes
 
 
+# ---------------------------------------------------------------------------
+# 3b. 一覧（checksums / externalRefs）の差分
+# ---------------------------------------------------------------------------
+
+def _normalize_enum(col: FieldSpec, text: str) -> str:
+    """列挙値は大文字小文字・前後の空白を無視して正規の表記に揃える（該当なしならそのまま）。"""
+    t = text.strip()
+    if not t:
+        return text
+    pool = {c.upper(): c for c in (*col.choices, *col.extra_choices)}
+    return pool.get(t.upper(), text)
+
+
+def _entry_canon(entry: Dict[str, Any], cols: List[FieldSpec]) -> Tuple[str, ...]:
+    """既存の 1 要素を、Excel の 1 行と比較できる正規形（列ごとのテキストのタプル）にする。"""
+    out = []
+    for col in cols:
+        t = _cell_text_for(entry, col.key)
+        t = "" if t is None else _nl(t)
+        if col.kind == "enum":
+            t = _normalize_enum(col, t)
+        out.append(t)
+    return tuple(out)
+
+
+def _row_cell_text(col: FieldSpec, raw: Any) -> str:
+    """Excel のセル → 比較用テキスト（空は ''）。型変換の警告はここでは出さない（追加行だけ別途出す）。"""
+    if _is_blank(raw):
+        return ""
+    text = raw if isinstance(raw, str) else _to_text(col, raw, [])
+    if col.kind == "enum":
+        text = _normalize_enum(col, text)
+    return _nl(text)
+
+
+def _validate_added_entry(spec: ListSheetSpec, cols: List[FieldSpec], headers: Dict[str, int],
+                          sid: str, rd: RowData, texts: Dict[str, str], out: List[ImportIssue]) -> None:
+    """新規・変更された要素（= 既存要素と一致しなかった行）だけを検証する。"""
+
+    def add(level: str, key: str, msg: str) -> None:
+        letter = get_column_letter(headers[key] + 1)
+        out.append(ImportIssue(level, f"{spec.sheet}!{letter}{rd.row}", f"[{sid}] {key}: {msg}"))
+
+    for col in cols:
+        text = texts[col.key]
+        raw = rd.values.get(col.key)
+        if text == TOO_LONG_MARKER:
+            add("error", col.key, "『未出力』マーカーのセルは要素として追加できません。")
+            continue
+        if text == "":
+            if col.required:
+                add("error", col.key, "必須項目です。")
+            continue
+        if not isinstance(raw, str):
+            notes: Notes = []
+            _to_text(col, raw, notes)
+            for level, msg in notes:
+                add(level, col.key, msg)
+        if col.key in rd.formula_cols:
+            add("warning", col.key, "数式セルです。保存されている計算結果を使用します。")
+        if text != text.strip():
+            add("warning", col.key, "値の前後に空白が含まれています。")
+        if col.kind == "enum":
+            if text in col.extra_choices:
+                add("warning", col.key, f"'{text}' は旧表記です（推奨: {text.replace('_', '-')}）。")
+            elif text not in col.choices:
+                add("error", col.key, f"次のいずれかで入力してください: {', '.join(col.choices)}（入力: {text!r}）")
+
+    if spec.list_key == "checksums":
+        alg, val = texts.get("algorithm", ""), texts.get("checksumValue", "")
+        if val and val != TOO_LONG_MARKER and "checksumValue" in headers:
+            if not re.fullmatch(r"[0-9a-fA-F]+", val):
+                add("error", "checksumValue", "16進数（0-9, a-f）以外の文字が含まれています（空白・改行を含む）。")
+            elif alg in _HASH_HEX_LENGTHS and len(val) != _HASH_HEX_LENGTHS[alg]:
+                add("error", "checksumValue",
+                    f"{alg} は {_HASH_HEX_LENGTHS[alg]} 桁の16進数です（入力: {len(val)} 桁）。")
+    elif spec.list_key == "externalRefs":
+        cat, typ, loc = (texts.get("referenceCategory", ""), texts.get("referenceType", ""),
+                         texts.get("referenceLocator", ""))
+        expected = KNOWN_REFERENCE_TYPES.get(typ)
+        if expected and cat and "referenceCategory" in headers and cat.replace("_", "-") != expected:
+            add("warning", "referenceCategory", f"referenceType '{typ}' の通常のカテゴリは {expected} です（入力: {cat}）。")
+        prefix = _REF_LOCATOR_PREFIX.get(typ)
+        if prefix and loc and loc != TOO_LONG_MARKER and "referenceLocator" in headers and not loc.startswith(prefix):
+            add("error", "referenceLocator", f"referenceType '{typ}' のロケーターは '{prefix}' で始まる必要があります。")
+
+
+def _row_label(sheet: str, row_nums: List[int]) -> str:
+    """プレビューのセル欄に出す行番号。離れた行を範囲に見せないよう、少数なら列挙する。"""
+    nums = sorted(set(row_nums))
+    if len(nums) <= 3:
+        return f"{sheet}!{','.join(str(n) for n in nums)}"
+    return f"{sheet}!{nums[0]}…{nums[-1]}（{len(nums)}行）"
+
+
+def _plan_list_change(spec: ListSheetSpec, cols: List[FieldSpec], headers: Dict[str, int], sid: str,
+                      node: Any, old_present: bool, old_val: Any, old_entries: List[Dict[str, Any]],
+                      rows: List[RowData], issues: List[ImportIssue]) -> Optional[CellChange]:
+    """1 パッケージ分の一覧を Excel の行と突合し、変更があれば CellChange を返す（なければ None）。"""
+    local: List[ImportIssue] = []
+
+    # 1) 行 → 要素（空行は『要素なし』の目印として読み飛ばす）
+    new_rows: List[Tuple[RowData, Dict[str, str]]] = []
+    formula_error = False
+    for rd in rows:
+        texts: Dict[str, str] = {}
+        bad = False
+        for col in cols:
+            raw = rd.values.get(col.key)
+            if col.key in rd.formula_cols and raw is None:
+                letter = get_column_letter(headers[col.key] + 1)
+                local.append(ImportIssue("error", f"{spec.sheet}!{letter}{rd.row}",
+                                         f"[{sid}] {col.key}: 数式セルで計算結果が保存されていません"
+                                         "（Excel で開いて保存し直すか、値として貼り付けてください）。"))
+                bad = formula_error = True
+                break
+            texts[col.key] = _row_cell_text(col, raw)
+        if bad or all(v == "" for v in texts.values()):
+            continue
+        new_rows.append((rd, texts))
+    if formula_error:
+        issues.extend(local)
+        return None
+
+    # 2) 内容が同じ行を既存要素と 1 対 1 で突合（順序非依存。重複要素も個数どおりに扱う）
+    available: Dict[Tuple[str, ...], List[int]] = {}
+    for i, entry in enumerate(old_entries):
+        available.setdefault(_entry_canon(entry, cols), []).append(i)
+    retained: List[int] = []
+    added_rows: List[Tuple[RowData, Dict[str, str]]] = []
+    for rd, texts in new_rows:
+        slots = available.get(tuple(texts[c.key] for c in cols))
+        if slots:
+            retained.append(slots.pop(0))
+        else:
+            added_rows.append((rd, texts))
+    retained_set = set(retained)
+    removed_idx = [i for i in range(len(old_entries)) if i not in retained_set]
+    if not added_rows and not removed_idx:
+        issues.extend(local)
+        return None                                   # 並べ替えだけ等、内容の変更なし
+
+    # 3) 追加される要素の検証（エラーがあれば、この一覧は反映しない）
+    added_entries: List[Dict[str, Any]] = []
+    for rd, texts in added_rows:
+        _validate_added_entry(spec, cols, headers, sid, rd, texts, local)
+        added_entries.append({c.key: texts[c.key] for c in cols if texts[c.key] != ""})
+    issues.extend(local)
+    if any(i.level == "error" for i in local):
+        return None
+
+    # 4) 新しい一覧 = 残る既存要素（元の順序・元の dict のまま） + 追加要素（シート上の順）
+    new_list = [old_entries[i] for i in sorted(retained_set)] + added_entries
+    if not new_list:
+        op = "delete"
+    else:
+        op = "set" if old_present else "add"
+    return CellChange(
+        spdx_id=sid, package_name=str(node.properties.get("name", "")), field=spec.list_key,
+        old=copy.deepcopy(old_val) if old_present else None,     # 競合検知用のスナップショット
+        new=new_list if new_list else None, op=op,
+        cell=_row_label(spec.sheet, [r.row for r in rows]),
+        node=node, kind="list", added=added_entries, removed=[old_entries[i] for i in removed_idx],
+    )
+
+
+def _build_list_changes(plan: ImportPlan, spec: ListSheetSpec, table: ParsedTable,
+                        index: Dict[str, List[Any]], tick: Callable[[], None]) -> None:
+    issues = plan.issues
+    missing = [c.key for c in spec.columns if c.required and c.key not in table.headers]
+    if missing:
+        issues.append(ImportIssue("error", f"{spec.sheet}!1",
+                                  f"必須の列 {', '.join(missing)} がありません。{spec.sheet} シートは無視します。"))
+        return
+    cols = [c for c in spec.columns if c.key in table.headers]
+    for dup in table.duplicate_headers:
+        issues.append(ImportIssue("warning", f"{spec.sheet}!1", f"見出し '{dup}' が重複しています。最初の列のみ使用します。"))
+    known = {"SPDXID", "name"} | {c.key for c in spec.columns}
+    for name, idx in table.headers.items():
+        if name not in known:
+            issues.append(ImportIssue("warning", f"{spec.sheet}!{get_column_letter(idx + 1)}1",
+                                      f"認識できない列 '{name}' は無視します。"))
+
+    # SPDXID ごとに行をまとめる（並べ替えや離れた行でも 1 つの一覧として扱う）
+    groups: Dict[str, List[RowData]] = {}
+    for rd in table.rows:
+        tick()
+        v = rd.values.get("SPDXID")
+        sid = "" if v is None else str(v).strip()
+        if not sid:
+            if any(not _is_blank(rd.values.get(c.key)) for c in cols):
+                issues.append(ImportIssue("warning", f"{spec.sheet}!A{rd.row}", "SPDXID が空の行は無視します。"))
+            continue
+        groups.setdefault(sid, []).append(rd)
+
+    matched = 0
+    for sid, rows in groups.items():
+        where = f"{spec.sheet}!A{rows[0].row}"
+        nodes = index.get(sid)
+        if not nodes:
+            issues.append(ImportIssue("warning", where,
+                                      f"SBOM に存在しない SPDXID '{sid}' の行は無視します（パッケージの追加は未対応）。"))
+            continue
+        if len(nodes) > 1:
+            issues.append(ImportIssue("error", where,
+                                      f"SBOM 内で SPDXID '{sid}' が重複しているため、この一覧は反映できません。"))
+            continue
+        node = nodes[0]
+        old_present = spec.list_key in node.properties
+        old_val = node.properties.get(spec.list_key)
+        old_entries = _list_entries_or_none(node, spec.list_key)
+        if old_entries is None:
+            issues.append(ImportIssue("warning", where,
+                                      f"[{sid}] {spec.list_key} が標準的でない構造のため、Excel からは変更しません。"))
+            continue
+        matched += 1
+        change = _plan_list_change(spec, cols, table.headers, sid, node, old_present, old_val,
+                                   old_entries, rows, issues)
+        if change is not None:
+            plan.changes.append(change)
+    plan.list_stats[spec.sheet] = matched
+
+
 def build_changes(
     root_node,
     parsed: ParsedWorkbook,
@@ -782,13 +1193,19 @@ def build_changes(
             counts[sid] = counts.get(sid, 0) + 1
     reported_dups = set()
 
-    total = len(parsed.rows)
-    plan.rows_total = total
-    for i, rd in enumerate(parsed.rows):
+    plan.rows_total = len(parsed.rows)
+    total_work = max(1, len(parsed.rows) + sum(len(t.rows) for t in parsed.child_tables.values()))
+    done = [0]
+
+    def tick() -> None:
         if should_cancel and should_cancel():
             raise ImportCanceled()
-        if progress and i % 200 == 0 and total:
-            progress(int(i * 100 / total))
+        done[0] += 1
+        if progress and done[0] % 200 == 0:
+            progress(min(99, int(done[0] * 100 / total_work)))
+
+    for rd in parsed.rows:
+        tick()
 
         sid = _sid_of(rd)
         where_row = f"{SHEET_PACKAGES}!A{rd.row}"
@@ -828,6 +1245,16 @@ def build_changes(
                 plan.changes.append(CellChange(
                     spdx_id=sid, package_name=str(props.get("name", "")), field=name,
                     old=old if old_present else None, new=new, op=op, cell=cell_addr, node=node))
+
+    # --- 一覧シート（Checksums / ExternalRefs） ---
+    for spec in LIST_SHEET_SPECS:
+        if spec.sheet in parsed.child_errors:
+            issues.append(ImportIssue("error", spec.sheet,
+                                      f"{parsed.child_errors[spec.sheet]} {spec.sheet} シートは無視します。"))
+            continue
+        table = parsed.child_tables.get(spec.sheet)
+        if table is not None:
+            _build_list_changes(plan, spec, table, index, tick)
 
     if progress:
         progress(100)
@@ -874,10 +1301,32 @@ def apply_changes(changes: Iterable[CellChange]) -> ApplyResult:
     return result
 
 
-def describe_value(value: Any) -> str:
+def format_entry(list_key: str, entry: Any) -> str:
+    """一覧の 1 要素を 1 行の文字列にする（プレビュー用）。"""
+    if not isinstance(entry, dict):
+        return str(entry)
+    if list_key == "checksums":
+        return f"{entry.get('algorithm', '?')}: {entry.get('checksumValue', '')}"
+    if list_key == "externalRefs":
+        text = (f"{entry.get('referenceType', '?')}: {entry.get('referenceLocator', '')}"
+                f"  [{entry.get('referenceCategory', '?')}]")
+        if entry.get("comment"):
+            text += f"  // {entry['comment']}"
+        return text
+    return ", ".join(f"{k}={v}" for k, v in entry.items())
+
+
+def describe_entries(list_key: str, entries: Optional[List[Any]], prefix: str = "") -> str:
+    """要素のリストを改行区切りの文字列にする。空なら ''。"""
+    return "\n".join(prefix + format_entry(list_key, e) for e in (entries or []))
+
+
+def describe_value(value: Any, list_key: str = "") -> str:
     """プレビュー表示用の文字列化。"""
     if value is None:
         return "(未設定)"
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, list):
+        return describe_entries(list_key, value) or "(空)"
     return str(value)

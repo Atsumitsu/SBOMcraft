@@ -114,10 +114,11 @@ class TestRoundTrip(ExcelTestBase):
         root, _ = make_root(2)
         self.export(root, rev=7)
         wb = load_workbook(self.path)
-        self.assertEqual(wb.sheetnames, ["_meta", "Packages"])
+        self.assertEqual(wb.sheetnames, ["_meta", "Packages", "Checksums", "ExternalRefs"])
         self.assertEqual(wb.active.title, "Packages")
         parsed = xio.read_workbook(self.path)
-        self.assertEqual(parsed.meta["formatVersion"], "1")
+        self.assertEqual(parsed.meta["formatVersion"], str(xio.FORMAT_VERSION))
+        self.assertEqual(xio.FORMAT_VERSION, 2)
         self.assertEqual(parsed.meta["editRevision"], "7")
         self.assertEqual(parsed.meta["packageCount"], "2")
 

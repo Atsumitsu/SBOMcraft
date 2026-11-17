@@ -6,11 +6,17 @@ SBOMcraft のすべての重要な変更はこのファイルに記録されま�
 ---
 
 ## [Unreleased]
-* Validation結果のExcel出力
-* Validation結果のExcel出力を編集したデータの読み込み・反映
-* Packagesの削除
 
-## [v0.7.0.0] - 2026-11-xx
+---
+## [v0.7.1.0] - 2026-11-17
+
+### 追加 (Added)
+* **Excel出力、取り込み機能**
+  * Packages 配下の情報のみ対応
+  * 詳細な利用方法は、excel_integration_guide.md 参照
+
+---
+## [v0.7.0.0] - 2026-11-15
 
 ### 追加 (Added)
 * **編集/保存機能**
@@ -18,6 +24,7 @@ SBOMcraft のすべての重要な変更はこのファイルに記録されま�
   * 編集内容を保存、SPDX3.x JSON-LD出力可能
 
 ### 変更 (Changed)
+* 開発用AI に Claude を利用
 * ツリービューを昇順ソートで表示
 * ツリービューで簡易キーボード検索
 * DetailPanelの項目表示順をある程度固定
