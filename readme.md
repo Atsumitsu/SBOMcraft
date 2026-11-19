@@ -5,7 +5,7 @@
 
 SBOMcraft は、SBOM（Software Bill of Materials）の閲覧および検証を目的とした Windows 向けの軽量ツールです。  
 独自実装の検証エンジンにてCISAの2026年の最小要件のチェック機能を備えています。
-SPDX2.3 JSON形式に対応しています。
+SPDX2.3 JSON形式の読み書き、SPDX3.1 JSON-LD出力に対応しています。
 v0.7.0.0から編集機能を追加しています。
 開発は生成AI利用で現在は Claude のブラウザ環境を利用しています。
 
