@@ -4,7 +4,7 @@
 
 import os
 import html
-from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings
+from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor,QIcon, QPixmap
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter, 
@@ -30,6 +30,7 @@ from core.excel_io import export_packages, apply_changes
 from core.excel_worker import ExcelImportWorker
 from ui.excel_import_dialog import ExcelImportPreviewDialog
 from core.comparer import ALL_GROUPS, MatchKey
+from core.drop_plan import DropKind, plan_drop
 from core.compare_worker import CompareWorker
 from ui.compare_dialog import SbomCompareDialog
 from ui.compare_setup_dialog import CompareSetupDialog
@@ -46,6 +47,9 @@ class MainWindow(QMainWindow):
         self._edit_revision = 0  # 編集のたびに増える通し番号（古い Excel の取り込み検知用）
         self._excel_busy = False  # Excel 取り込み中か
         self._excel_progress = None
+        self._parse_busy = False  # SBOM の読み込み（パース）中か
+        self._after_open = None  # 読み込み成功後に実行する処理（D&D の 2 ファイル自動比較で使う）
+        self._drag_plan = None  # ドラッグ中の判定結果（DragMove のたびにファイルを調べ直さないため）
         self._compare_busy = False  # SBOM 比較の実行中か
         self._compare_progress = None
         self._compare_dialogs = []  # 開いている比較ウィンドウ（参照を保持する）
@@ -56,6 +60,9 @@ class MainWindow(QMainWindow):
         self.license_manager = SPDXLicenseManager()
 
         self.init_ui()
+        # ドラッグ＆ドロップ: 入力欄などが先にドロップを受けてパスを書き込まないよう、アプリ全体のフィルターで先に処理する
+        self.setAcceptDrops(True)
+        QApplication.instance().installEventFilter(self)
         self.restore_window_state()
         self.validator_thread = None
 
@@ -247,7 +254,9 @@ class MainWindow(QMainWindow):
     
         self.compliance_report = QTextEdit()
         self.compliance_report.setReadOnly(True)
-        self.compliance_report.setPlaceholderText("メニューの「File」->「Open SBOM JSON」からファイルを読み込んでください。")
+        self.compliance_report.setPlaceholderText(
+            "メニューの「File」->「Open SBOM JSON」からファイルを読み込んでください。\n"
+            "SBOM (SPDX JSON) ファイルをウィンドウにドラッグ＆ドロップしても開けます。2 ファイルをドロップすると比較します。")
         compliance_layout.addWidget(self.compliance_report)
         
         self.vertical_splitter.addWidget(compliance_container)
@@ -452,6 +461,7 @@ class MainWindow(QMainWindow):
             return
         for dlg in list(self._compare_dialogs):      # 独立ウィンドウの比較結果も一緒に閉じる
             dlg.close()
+        QApplication.instance().removeEventFilter(self)
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("main_splitter_state", self.main_splitter.saveState())
         self.settings.setValue("vertical_splitter_state", self.vertical_splitter.saveState())
@@ -463,6 +473,9 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_file(self):
+        if self._is_busy():
+            self.status_bar.showMessage("処理中のためファイルを開けません。完了してからやり直してください。", 5000)
+            return
         if not self._maybe_save_changes():   # 未保存の編集があれば先に確認
             return
         file_path, _ = QFileDialog.getOpenFileName(
@@ -470,7 +483,12 @@ class MainWindow(QMainWindow):
         )
         if not file_path:
             return
+        self._open_path(file_path)
 
+    def _open_path(self, file_path: str, after_open=None):
+        """SBOM を読み込む（メニューの Open と D&D の共通処理）。after_open は読み込み成功後に呼ぶ関数。"""
+        self._parse_busy = True
+        self._after_open = after_open
         self.last_dir = os.path.dirname(file_path)
         self.settings.setValue("last_directory", self.last_dir)
         self.current_file_path = file_path
@@ -510,6 +528,7 @@ class MainWindow(QMainWindow):
 
     @Slot(object)
     def on_parse_success(self, root_node: SBOMNode):
+        self._parse_busy = False
         self.compliance_report.append("<br><font color='green'><b>[SUCCESS]</b> JSONのパースが完了しました。</font>")
         self.compliance_report.append("🌿 ツリー画面を構築しています...")
         
@@ -536,8 +555,14 @@ class MainWindow(QMainWindow):
         self.set_validation_menu_enabled(True) # 検証メニューを解禁
         self.compliance_report.append("✅ ツリーの構築が完了しました！")
 
+        callback, self._after_open = self._after_open, None      # D&D の自動比較など、読み込み後に続けたい処理
+        if callback:
+            QTimer.singleShot(0, callback)
+
     @Slot(str)
     def on_parse_error(self, error_msg: str):
+        self._parse_busy = False
+        self._after_open = None
         self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> 読み込み失敗: {error_msg}</font>")
         self.status_bar.showMessage(f"Error loading {self.current_file_path}: {error_msg}")
         QMessageBox.critical(self, "Parser Error", f"An error occurred while parsing:\n{error_msg}") 
@@ -1037,7 +1062,7 @@ class MainWindow(QMainWindow):
         if not self._compare_precheck():
             return
         name = os.path.basename(self.current_file_path) or "(無題)"
-        label_a = f"{name} (編集中)" if self._modified else name
+        label_a = self._current_compare_label()
         base_text = (f"{name}（現在開いている SBOM。未保存の編集内容を含みます）" if self._modified
                      else f"{name}（現在開いている SBOM）")
         dlg = CompareSetupDialog(self, title="別の SBOM と比較", base_text=base_text, ask_target=True,
@@ -1189,6 +1214,112 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
         return True
+
+    # ------------------------------------------------------------------
+    # ドラッグ＆ドロップ
+    # ------------------------------------------------------------------
+    def _is_busy(self) -> bool:
+        return self._parse_busy or self._compare_busy or self._excel_busy
+
+    def _current_compare_label(self) -> str:
+        name = os.path.basename(self.current_file_path) or "(無題)"
+        return f"{name} (編集中)" if self._modified else name
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+        if (et in (QEvent.Type.DragEnter, QEvent.Type.DragMove, QEvent.Type.Drop)
+                and isinstance(obj, QWidget) and obj.window() is self):
+            mime = event.mimeData()
+            if mime is not None and mime.hasUrls():
+                self._on_drag_event(event, et)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _on_drag_event(self, event, et):
+        if et == QEvent.Type.Drop or et == QEvent.Type.DragEnter or self._drag_plan is None:
+            paths = [u.toLocalFile() if u.isLocalFile() else u.toString() for u in event.mimeData().urls()]
+            self._drag_plan = plan_drop(paths, has_loaded=self.current_root_node is not None, busy=self._is_busy())
+        plan = self._drag_plan
+
+        if plan.kind == DropKind.REJECT:
+            event.ignore()
+            if et != QEvent.Type.DragMove:
+                self.status_bar.showMessage(plan.reason, 5000)
+            if et == QEvent.Type.Drop:
+                self._drag_plan = None
+            return
+        event.acceptProposedAction()
+        if et == QEvent.Type.Drop:
+            self._drag_plan = None
+            # ドロップ元（エクスプローラー等）を待たせないよう、ダイアログを伴う処理はイベントの外で実行する
+            QTimer.singleShot(0, lambda: self._execute_drop_plan(plan))
+
+    def _execute_drop_plan(self, plan):
+        if self._is_busy():
+            return
+        paths = list(plan.paths)
+        if plan.kind == DropKind.OPEN:
+            if self._maybe_save_changes():
+                self._open_path(paths[0])
+        elif plan.kind == DropKind.ASK_OPEN_OR_COMPARE:
+            self._ask_open_or_compare(paths[0])
+        elif plan.kind == DropKind.COMPARE_TWO:
+            self._open_and_compare(paths[0], paths[1])
+        elif plan.kind == DropKind.CONFIRM_COMPARE_TWO:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle("ファイルのドロップ")
+            box.setText("2 つのファイルがドロップされました。")
+            box.setInformativeText(
+                f"現在開いている SBOM を閉じて、次の 2 ファイルを比較します。\n\n"
+                f"A（旧）: {os.path.basename(paths[0])}\nB（新）: {os.path.basename(paths[1])}")
+            btn_ok = box.addButton("比較する", QMessageBox.ButtonRole.AcceptRole)
+            btn_cancel = box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+            box.setDefaultButton(btn_ok)
+            box.setEscapeButton(btn_cancel)
+            box.exec()
+            if box.clickedButton() is btn_ok:
+                self._open_and_compare(paths[0], paths[1])
+
+    def _ask_open_or_compare(self, path: str):
+        """SBOM を開いている状態で 1 ファイルがドロップされたとき: 新規で開くか、比較するかを確認する"""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("ファイルのドロップ")
+        box.setText(f"「{os.path.basename(path)}」がドロップされました。")
+        box.setInformativeText(
+            "新規として開くか、現在開いている SBOM と比較するかを選んでください。\n\n"
+            "・新規として開く: 現在の SBOM を閉じて読み込みます。\n"
+            "・現在の SBOM と比較: 現在の SBOM（未保存の編集を含む）を A（旧）、"
+            "ドロップしたファイルを B（新）として比較します。")
+        btn_open = box.addButton("新規として開く", QMessageBox.ButtonRole.AcceptRole)
+        btn_compare = box.addButton("現在の SBOM と比較", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_open)
+        box.setEscapeButton(btn_cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is btn_open:
+            if self._maybe_save_changes():
+                self._open_path(path)
+        elif clicked is btn_compare:
+            if not self._compare_precheck():
+                return
+            self._start_compare(self.current_root_node, self._current_compare_label(),
+                                path, os.path.basename(path), self._compare_mode, self._compare_groups)
+
+    def _open_and_compare(self, first: str, second: str):
+        """1 つ目を開き（メイン画面のツリー = A）、読み込み完了後に 2 つ目(B)と前回の条件で自動比較する"""
+        if not self._maybe_save_changes():
+            return
+
+        def compare_after_open():
+            if self.current_root_node is None:       # 読み込みに失敗した場合は比較しない
+                return
+            self._start_compare(self.current_root_node, os.path.basename(first),
+                                second, os.path.basename(second), self._compare_mode, self._compare_groups)
+
+        self._open_path(first, after_open=compare_after_open)
 
     def _set_modified(self, modified: bool):
         self._modified = modified

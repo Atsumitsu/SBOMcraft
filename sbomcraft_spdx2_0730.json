@@ -1,0 +1,568 @@
+{
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.3.0-d1e4c559-656b-4275-89e3-923157531553",
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "SBOMcraft",
+  "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
+  "creationInfo": {
+    "created": "2026-11-20T13:00:31Z",
+    "creators": [
+      "Person: XZ Manj",
+      "Tool: py-sbom-mini-1.1.0"
+    ]
+  },
+  "packages": [
+    {
+      "name": "SBOMcraft",
+      "SPDXID": "SPDXRef-RootPackage",
+      "versionInfo": "0.7.3.0",
+      "supplier": "Person: XZ Manj",
+      "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) 2026 XZ Manj. All rights reserved.",
+      "summary": "Root application container for the project",
+      "comment": "Generation Context: Deployed",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1ec6bf96553c42267b4e0a42632b5dc57fcdcf1245a087b681bfeec38a05c224"
+        }
+      ],
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:generic/SBOMcraft@0.7.3.0"
+        }
+      ]
+    },
+    {
+      "name": "packageurl-python",
+      "SPDXID": "SPDXRef-Package-packageurl-python",
+      "versionInfo": "0.17.6",
+      "supplier": "Organization: the purl authors",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) the purl authors",
+      "summary": "A purl aka. Package URL parser and builder",
+      "homepage": "https://github.com/package-url/packageurl-python",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
+        }
+      ]
+    },
+    {
+      "name": "ijson",
+      "SPDXID": "SPDXRef-Package-ijson",
+      "versionInfo": "3.6.0",
+      "supplier": "Organization: Rodrigo Tobar",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "BSD-3-Clause AND ISC",
+      "licenseDeclared": "BSD-3-Clause AND ISC",
+      "copyrightText": "Copyright (c) Rodrigo Tobar",
+      "summary": "Iterative JSON parser with standard Python iterator interfaces",
+      "homepage": "https://github.com/ICRAR/ijson",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/ijson@3.6.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2b46b727320a9ed40e1328af07e777d322c8f269672c510cac47e2ae95fc56f7"
+        }
+      ]
+    },
+    {
+      "name": "openpyxl",
+      "SPDXID": "SPDXRef-Package-openpyxl",
+      "versionInfo": "3.1.5",
+      "supplier": "Organization: See AUTHORS",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) See AUTHORS",
+      "summary": "A Python library to read/write Excel 2010 xlsx/xlsm files",
+      "homepage": "https://openpyxl.readthedocs.io",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/openpyxl@3.1.5"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "216b3b8fc441713d39f2b621dbba340dd3b00e35fa226cb71fdcc4e45ff063f3"
+        }
+      ]
+    },
+    {
+      "name": "PySide6",
+      "SPDXID": "SPDXRef-Package-PySide6",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "453eff898da8fdba4c01a0c3152892e3353d0bbf20c68e4a1b4d08b6d3886b22"
+        }
+      ]
+    },
+    {
+      "name": "cyclonedx-python-lib",
+      "SPDXID": "SPDXRef-Package-cyclonedx-python-lib",
+      "versionInfo": "11.12.0",
+      "supplier": "Organization: Paul Horton",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) OWASP Foundation. All Rights Reserved.",
+      "summary": "Python library for CycloneDX",
+      "homepage": "https://github.com/CycloneDX/cyclonedx-python-lib/#readme",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/cyclonedx-python-lib@11.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3c8030e8dfa0b1df3c9e7153c4eb01e57c65f0793f276bfee79633f1d0c4ace1"
+        }
+      ]
+    },
+    {
+      "name": "et_xmlfile",
+      "SPDXID": "SPDXRef-Package-et-xmlfile",
+      "versionInfo": "2.0.0",
+      "supplier": "Organization: See AUTHORS.txt",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) See AUTHORS.txt",
+      "summary": "An implementation of lxml.xmlfile for the standard library",
+      "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/et_xmlfile@2.0.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3d9bd234d7d32f64c3cb2c69651bca279929c3ddab02515ef862bfb7e52f220b"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_Addons",
+      "SPDXID": "SPDXRef-Package-PySide6-Addons",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (Addons)",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6_addons@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7acb50c097c554cce109d568eb891a3b76820218a4ed0cee0d74045b92908b37"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_Essentials",
+      "SPDXID": "SPDXRef-Package-PySide6-Essentials",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (Essentials)",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6_essentials@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "ac0ec3aa3bd41811343d68b30fe3118ecd9aa95aa6bde00f1fbbe0d08b066d62"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_Pdf",
+      "SPDXID": "SPDXRef-Package-PySide6-Pdf",
+      "versionInfo": "6.12.0.140",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (Pdf)",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6_pdf@6.12.0.140"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "0700d2a7e165321fbccbf1422121ae820dc7e885e919076dda40d8108f7615dd"
+        }
+      ]
+    },
+    {
+      "name": "PySide6_WebEngine",
+      "SPDXID": "SPDXRef-Package-PySide6-WebEngine",
+      "versionInfo": "6.12.0.140",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework (WebEngine)",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6_webengine@6.12.0.140"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "e15965c7e43f2980a0adfe04f7aef1bc53b56bc07f25fb83f8d7235b6cd99735"
+        }
+      ]
+    },
+    {
+      "name": "license-expression",
+      "SPDXID": "SPDXRef-Package-license-expression",
+      "versionInfo": "30.4.4",
+      "supplier": "Organization: nexB. Inc. and others",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) nexB. Inc. and others",
+      "summary": "license-expression is a comprehensive utility library to parse, compare, simplify and normalize license expressions (such as SPDX license expressions) using boolean logic.",
+      "homepage": "https://github.com/aboutcode-org/license-expression",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/license-expression@30.4.4"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "1b6e0530187ebbbce5db39f96be77e7f8c48c4ea95a7362aeec33854dae8b98e"
+        }
+      ]
+    },
+    {
+      "name": "py-serializable",
+      "SPDXID": "SPDXRef-Package-py-serializable",
+      "versionInfo": "2.1.0",
+      "supplier": "Organization: Paul Horton",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) Paul Horton 2022. All Rights Reserved.",
+      "summary": "Library for serializing and deserializing Python Objects to and from JSON and XML.",
+      "homepage": "https://github.com/madpah/serializable#readme",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/py-serializable@2.1.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "addc499cdfde40cfa4b5b3feab3e6e17ce15811b3a9cfe2c2821b18e90ebf6f1"
+        }
+      ]
+    },
+    {
+      "name": "sortedcontainers",
+      "SPDXID": "SPDXRef-Package-sortedcontainers",
+      "versionInfo": "2.4.0",
+      "supplier": "Organization: Grant Jenks",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright 2014-2019 Grant Jenks",
+      "summary": "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set",
+      "homepage": "http://www.grantjenks.com/docs/sortedcontainers/",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/sortedcontainers@2.4.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "4d8e5c59ce547431fc022b58a9a1a43142b920251397667467e280b6d5fd4e66"
+        }
+      ]
+    },
+    {
+      "name": "shiboken6",
+      "SPDXID": "SPDXRef-Package-shiboken6",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python/C++ bindings helper module",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/shiboken6@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "6294a37825eb2cb5b3eee91546c735fc1790f3da04cefcac945f495221c0b656"
+        }
+      ]
+    },
+    {
+      "name": "boolean.py",
+      "SPDXID": "SPDXRef-Package-boolean.py",
+      "versionInfo": "5.0",
+      "supplier": "Organization: Sebastian Kraemer",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "BSD-2-Clause",
+      "licenseDeclared": "BSD-2-Clause",
+      "copyrightText": "Copyright (c) Sebastian Kraemer",
+      "summary": "Define boolean algebras, create and parse boolean expressions and create custom boolean DSL.",
+      "homepage": "https://github.com/bastikr/boolean.py",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/boolean.py@5.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "44c650ebd833d852c8731fa3f0c5759506309622300e4c1954a540d78572cc54"
+        }
+      ]
+    },
+    {
+      "name": "defusedxml",
+      "SPDXID": "SPDXRef-Package-defusedxml",
+      "versionInfo": "0.7.1",
+      "supplier": "Organization: Christian Heimes",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LicenseRef--psfl",
+      "licenseDeclared": "LicenseRef--psfl",
+      "copyrightText": "Copyright (c) 2013-2017 by Christian Heimes <christian@python.org>",
+      "summary": "XML bomb protection for Python stdlib modules",
+      "homepage": "https://github.com/tiran/defusedxml",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/defusedxml@0.7.1"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f494c4996d3db354933ac0f6bb4ac38d3323ec685a6a3369cf1fabff330ac97b"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-RootPackage"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-cyclonedx-python-lib"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-ijson"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-openpyxl"
+    },
+    {
+      "spdxElementId": "SPDXRef-RootPackage",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Addons"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Essentials"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Pdf"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-WebEngine"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-license-expression"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-py-serializable"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-sortedcontainers"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6-Addons",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Essentials"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6-Essentials",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-shiboken6"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6-Pdf",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Essentials"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6-WebEngine",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Addons"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-license-expression",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-boolean.py"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-py-serializable",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-defusedxml"
+    }
+  ],
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef--psfl",
+      "extractedText": "PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2\n--------------------------------------------\n\n1. This LICENSE AGREEMENT is between the Python Software Foundation\n(\"PSF\"), and the Individual or Organization (\"Licensee\") accessing and\notherwise using this software (\"Python\") in source or binary form and\nits associated documentation.\n\n2. Subject to the terms and conditions of this License Agreement, PSF\nhereby grants Licensee a nonexclusive, royalty-free, world-wide\nlicense to reproduce, analyze, test, perform and/or display publicly,\nprepare derivative works, distribute, and otherwise use Python\nalone or in any derivative version, provided, however, that PSF's\nLicense Agreement and PSF's notice of copyright, i.e., \"Copyright (c)\n2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008 Python Software Foundation; \nAll Rights Reserved\" are retained in Python alone or in any derivative \nversion prepared by Licensee.\n\n3. In the event Licensee prepares a derivative work that is based on\nor incorporates Python or any part thereof, and wants to make\nthe derivative work available to others as provided herein, then\nLicensee hereby agrees to include in any such work a brief summary of\nthe changes made to Python.\n\n4. PSF is making Python available to Licensee on an \"AS IS\"\nbasis.  PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR\nIMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND\nDISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS\nFOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON WILL NOT\nINFRINGE ANY THIRD PARTY RIGHTS.\n\n5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON\nFOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS\nA RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON,\nOR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.\n\n6. This License Agreement will automatically terminate upon a material\nbreach of its terms and conditions.\n\n7. Nothing in this License Agreement shall be deemed to create any\nrelationship of agency, partnership, or joint venture between PSF and\nLicensee.  This License Agreement does not grant permission to use PSF\ntrademarks or trade name in a trademark sense to endorse or promote\nproducts or services of Licensee, or any third party.\n\n8. By copying, installing or otherwise using Python, Licensee\nagrees to be bound by the terms and conditions of this License\nAgreement.",
+      "name": "PSFL"
+    }
+  ]
+}
