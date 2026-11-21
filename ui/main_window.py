@@ -3,7 +3,9 @@
 # Copyright (c) 2026 XZ Manj
 
 import os
+import sys
 import html
+import traceback
 from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor,QIcon, QPixmap
 from PySide6.QtWidgets import (
@@ -62,7 +64,10 @@ class MainWindow(QMainWindow):
         self.init_ui()
         # ドラッグ＆ドロップ: 入力欄などが先にドロップを受けてパスを書き込まないよう、アプリ全体のフィルターで先に処理する
         self.setAcceptDrops(True)
+        for w in self.findChildren(QWidget):          # 入力欄などが先にドロップを受けて、パスを書き込まないようにする
+            w.setAcceptDrops(False)
         QApplication.instance().installEventFilter(self)
+        self._warn_if_elevated()
         self.restore_window_state()
         self.validator_thread = None
 
@@ -1225,15 +1230,57 @@ class MainWindow(QMainWindow):
         name = os.path.basename(self.current_file_path) or "(無題)"
         return f"{name} (編集中)" if self._modified else name
 
+    def _is_in_main_window(self, obj) -> bool:
+        """obj がメイン画面（またはその部品）か。子ダイアログ（確認・進捗など）や別ウィンドウは含めない"""
+        if obj is self:
+            return True
+        if not isinstance(obj, QWidget) or not self.isAncestorOf(obj):
+            return False
+        return not isinstance(obj.window(), QDialog)
+
     def eventFilter(self, obj, event):
         et = event.type()
         if (et in (QEvent.Type.DragEnter, QEvent.Type.DragMove, QEvent.Type.Drop)
-                and isinstance(obj, QWidget) and obj.window() is self):
+                and self._is_in_main_window(obj)):
             mime = event.mimeData()
             if mime is not None and mime.hasUrls():
-                self._on_drag_event(event, et)
+                self._safe_drag_event(event, et)
                 return True
         return super().eventFilter(obj, event)
+
+    # 標準の受け口。上のフィルターで処理されなかったとき（ドロップ先がメイン画面そのものの場合など）に使われる
+    def dragEnterEvent(self, event):
+        self._safe_drag_event(event, QEvent.Type.DragEnter)
+
+    def dragMoveEvent(self, event):
+        self._safe_drag_event(event, QEvent.Type.DragMove)
+
+    def dropEvent(self, event):
+        self._safe_drag_event(event, QEvent.Type.Drop)
+
+    def _safe_drag_event(self, event, et):
+        """例外で event が未処理のまま戻ると、原因が分からないまま禁止マークになるため、必ず内容を表示する"""
+        try:
+            self._on_drag_event(event, et)
+        except Exception as e:
+            traceback.print_exc()
+            event.ignore()
+            self.status_bar.showMessage(f"ドロップの処理でエラーが発生しました: {type(e).__name__}: {e}", 10000)
+
+    def _warn_if_elevated(self):
+        """Windows で管理者として実行していると、通常権限のエクスプローラーからはドロップできない（UIPI）"""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            elevated = bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return
+        if elevated:
+            msg = ("管理者権限で実行中のため、エクスプローラーからのドラッグ＆ドロップは使えません"
+                   "（Windows の仕様）。通常の権限で起動し直してください。")
+            self.status_bar.showMessage(msg, 20000)
+            self.compliance_report.append(f"<font color='#B36B00'><b>[WARN]</b> {html.escape(msg)}</font>")
 
     def _on_drag_event(self, event, et):
         if et == QEvent.Type.Drop or et == QEvent.Type.DragEnter or self._drag_plan is None:
