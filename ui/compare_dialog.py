@@ -5,19 +5,22 @@
 import os
 from typing import Callable, List, Optional, Set
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, QRect, QRectF, QSortFilterProxyModel, Qt
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QPushButton, QSplitter, QTabBar, QTableView, QTextBrowser, QVBoxLayout, QHeaderView, QAbstractItemView,
+    QAbstractItemView, QApplication, QCheckBox, QDialog, QFileDialog, QHBoxLayout, QHeaderView, QLabel,
+    QLineEdit, QMessageBox, QPushButton, QSplitter, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
+    QTabBar, QTableView, QTextBrowser, QVBoxLayout,
 )
 
-from core.compare_report import STATUS_COLORS, detail_html, summary_html
+from core.compare_report import detail_html, docs_html
 from core.comparer import (
     CompareResult, DiffStatus, FLAG_LABELS, PackageDiff, STATUS_LABELS, VERSION_CHANGE_LABELS,
     compare, export_csv,
 )
+from ui import theme
 from ui.compare_setup_dialog import CompareSetupDialog
+from ui.widgets import StatCard
 
 _STATUS_ORDER = {DiffStatus.REMOVED: 0, DiffStatus.ADDED: 1, DiffStatus.VERSION_CHANGED: 2,
                  DiffStatus.MODIFIED: 3, DiffStatus.UNCHANGED: 4}
@@ -77,12 +80,14 @@ class DiffTableModel(QAbstractTableModel):
             if col == 0 and d.version_change:
                 tip = f"{STATUS_LABELS[d.status]}（{VERSION_CHANGE_LABELS[d.version_change]}）"
             return tip or None
-        if role == Qt.ItemDataRole.BackgroundRole:
-            return None if d.status == DiffStatus.UNCHANGED else QColor(STATUS_COLORS[d.status])
         if role == Qt.ItemDataRole.ForegroundRole:
+            # 行全体は塗らない。要注意だけ赤、未変更は控えめな色にする
+            t = theme.tokens()
+            if col == 5 and d.flags:
+                return QColor(t.danger_fg)
             if d.status == DiffStatus.UNCHANGED:
-                return None
-            return QColor("#B00020") if col == 5 else QColor("#000000")
+                return QColor(t.text_muted)
+            return None
         if role == SORT_ROLE:
             if col == 0:
                 return _STATUS_ORDER[d.status]
@@ -90,6 +95,42 @@ class DiffTableModel(QAbstractTableModel):
         if role == DIFF_ROLE:
             return d
         return None
+
+
+class StatusChipDelegate(QStyledItemDelegate):
+    """「状態」列: 丸いチップ + 行の左端に色バー（変更のある行のみ）"""
+
+    def paint(self, painter, option, index):
+        d = index.data(DIFF_ROLE)
+        if d is None:
+            super().paint(painter, option, index)
+            return
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        text = opt.text
+        opt.text = ""                                   # 文字は自前で描くので、背景・選択色だけ標準描画させる
+        widget = option.widget
+        style = widget.style() if widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+        strong, bg, fg = theme.tone_colors(theme.STATUS_TONES[d.status.value])
+        fm = opt.fontMetrics
+        h = fm.height() + 4
+        avail = opt.rect.width() - 20
+        label = fm.elidedText(text, Qt.TextElideMode.ElideRight, max(avail - 16, 10))
+        w = min(avail, fm.horizontalAdvance(label) + 16)
+        r = QRectF(opt.rect.left() + 10, opt.rect.center().y() - h / 2 + 0.5, w, h)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(bg))
+        painter.drawRoundedRect(r, h / 2, h / 2)
+        painter.setPen(QColor(fg))
+        painter.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
+        if d.status != DiffStatus.UNCHANGED:
+            painter.fillRect(QRect(opt.rect.left(), opt.rect.top() + 3, 3, opt.rect.height() - 6), QColor(strong))
+        painter.restore()
 
 
 class DiffFilterProxy(QSortFilterProxyModel):
@@ -126,7 +167,7 @@ class DiffFilterProxy(QSortFilterProxyModel):
         return True
 
 
-# タブ定義: (表示名, 対象の状態 / None=すべて, 件数の数え方)
+# タブ定義: (表示名, 対象の状態 / None=すべて)
 _TABS = [
     ("差分", {DiffStatus.ADDED, DiffStatus.REMOVED, DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED}),
     ("追加", {DiffStatus.ADDED}),
@@ -134,6 +175,16 @@ _TABS = [
     ("変更", {DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED}),
     ("未変更", {DiffStatus.UNCHANGED}),
     ("すべて", None),
+]
+
+# 統計カード: (キー, 表示名, 色の系統, クリックで開くタブ)
+_CARDS = [
+    ("added", "追加", "success", 1),
+    ("removed", "削除", "danger", 2),
+    ("version_changed", "バージョン変更", "warning", 3),
+    ("modified", "その他の変更", "info", 3),
+    ("unchanged", "未変更", "neutral", 4),
+    ("attention", "⚠ 要注意", "danger", 0),
 ]
 
 
@@ -150,7 +201,7 @@ class SbomCompareDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint
                             | Qt.WindowType.WindowMinimizeButtonHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.resize(1250, 760)
+        self.resize(1250, 780)
 
         self.result = result
         self._jump = jump_callback
@@ -164,20 +215,36 @@ class SbomCompareDialog(QDialog):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(10)
 
-        self.summary_label = QLabel()
-        self.summary_label.setTextFormat(Qt.TextFormat.RichText)
-        self.summary_label.setWordWrap(True)
-        self.summary_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.summary_label.setStyleSheet("background:#FAFAFA;color:#000000;padding:6px;border:1px solid #CCCCCC;")
-        layout.addWidget(self.summary_label)
+        # A / B のドキュメント情報
+        self.docs_label = QLabel()
+        self.docs_label.setTextFormat(Qt.TextFormat.RichText)
+        self.docs_label.setWordWrap(True)
+        self.docs_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.docs_label)
 
+        # 統計カード（クリックで該当タブへ）
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(10)
+        self.cards = {}
+        for key, caption, tone, tab in _CARDS:
+            card = StatCard(caption, tone)
+            card.clicked.connect(lambda k=key, t=tab: self._on_card_clicked(k, t))
+            cards_row.addWidget(card, 1)
+            self.cards[key] = card
+        layout.addLayout(cards_row)
+
+        # 注意書き（SPDX バージョン違いなど）
         self.warning_label = QLabel()
         self.warning_label.setTextFormat(Qt.TextFormat.RichText)
         self.warning_label.setWordWrap(True)
-        self.warning_label.setStyleSheet("background:#FFF8E1;color:#5D4300;padding:4px 6px;border:1px solid #E6C86E;")
+        self.warning_label.setProperty("banner", True)
+        self.warning_label.setProperty("tone", "warning")
         layout.addWidget(self.warning_label)
 
+        # タブ + 絞り込み
         filter_row = QHBoxLayout()
         self.tab_bar = QTabBar()
         self.tab_bar.setExpanding(False)
@@ -188,16 +255,17 @@ class SbomCompareDialog(QDialog):
         filter_row.addWidget(self.tab_bar)
         filter_row.addStretch(1)
         self.attention_check = QCheckBox("⚠ 要注意のみ")
-        self.attention_check.toggled.connect(lambda on: self._proxy.set_attention_only(on))
+        self.attention_check.toggled.connect(self._on_attention_toggled)
         filter_row.addWidget(self.attention_check)
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("検索（名前・バージョン・SPDXID。スペース区切りで AND）")
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setMinimumWidth(320)
-        self.search_edit.textChanged.connect(lambda t: self._proxy.set_text(t))
+        self.search_edit.textChanged.connect(lambda t: (self._proxy.set_text(t), self._refresh_view()))
         filter_row.addWidget(self.search_edit)
         layout.addLayout(filter_row)
 
+        # 一覧 | 詳細
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self._model = DiffTableModel([])
         self._proxy = DiffFilterProxy(self)
@@ -208,32 +276,35 @@ class SbomCompareDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setShowGrid(False)
+        self.table.setAlternatingRowColors(False)
+        self.table.setWordWrap(False)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(24)
+        self.table.verticalHeader().setDefaultSectionSize(32)
         self.table.setSortingEnabled(True)
         self._proxy.sort(-1)
+        self.table.setItemDelegateForColumn(0, StatusChipDelegate(self.table))
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
-        for col, width in enumerate((120, 240, 120, 120, 260, 200)):
+        header.setHighlightSections(False)
+        for col, width in enumerate((150, 240, 120, 120, 260, 200)):
             self.table.setColumnWidth(col, width)
         self.table.doubleClicked.connect(lambda idx: self._jump_to_tree())
         splitter.addWidget(self.table)
 
         self.detail = QTextBrowser()
-        self.detail.setStyleSheet("QTextBrowser{background:#FFFFFF;color:#000000;}")
         self.detail.setOpenLinks(False)
+        self.detail.document().setDocumentMargin(14)
         splitter.addWidget(self.detail)
         splitter.setSizes([760, 480])
         layout.addWidget(splitter, 1)
 
+        # 下部ボタン（主操作は「メインのツリーで表示」だけ）
         bottom = QHBoxLayout()
         self.status_label = QLabel()
+        self.status_label.setProperty("role", "muted")
         bottom.addWidget(self.status_label, 1)
-        self.btn_jump = QPushButton("メインのツリーで表示")
-        self.btn_jump.setToolTip("選択中のパッケージを、メイン画面のツリーで選択します（ダブルクリックでも可）")
-        self.btn_jump.clicked.connect(self._jump_to_tree)
-        bottom.addWidget(self.btn_jump)
         btn_opts = QPushButton("条件を変更...")
         btn_opts.setToolTip("突合キーや比較する項目を変えて、もう一度比較します")
         btn_opts.clicked.connect(self._change_options)
@@ -246,24 +317,53 @@ class SbomCompareDialog(QDialog):
         btn_csv.setToolTip("差分を CSV に出力します。現在のタブが『すべて』『未変更』のときは未変更の行も含めます。")
         btn_csv.clicked.connect(self._export_csv)
         bottom.addWidget(btn_csv)
+        bottom.addSpacing(8)
         btn_close = QPushButton("閉じる")
+        btn_close.setProperty("variant", "ghost")
         btn_close.clicked.connect(self.close)
         bottom.addWidget(btn_close)
+        self.btn_jump = QPushButton("メインのツリーで表示")
+        self.btn_jump.setProperty("variant", "primary")
+        self.btn_jump.setToolTip("選択中のパッケージを、メイン画面のツリーで選択します（ダブルクリックでも可）")
+        self.btn_jump.clicked.connect(self._jump_to_tree)
+        bottom.addWidget(self.btn_jump)
         layout.addLayout(bottom)
 
         self.table.selectionModel().currentRowChanged.connect(lambda cur, prev: self._show_detail())
+
+    # -- テーマ変更 -----------------------------------------------------------
+
+    def changeEvent(self, event):
+        # テーマ（パレット）が切り替わったら、HTML で作っている部分と表を描き直す
+        if event.type() == QEvent.Type.ApplicationPaletteChange and hasattr(self, "table"):
+            self.docs_label.setText(docs_html(self.result))
+            self.table.viewport().update()
+            self._show_detail()
+        super().changeEvent(event)
 
     # -- 結果の反映 ---------------------------------------------------------
 
     def set_result(self, result: CompareResult):
         self.result = result
         self.setWindowTitle(f"SBOM 比較 - {result.doc_a.label}  ⇄  {result.doc_b.label}")
-        self.summary_label.setText(summary_html(result))
+        self.docs_label.setText(docs_html(result))
+
         if result.warnings:
             self.warning_label.setText("<br>".join("⚠ " + w.replace("<", "&lt;") for w in result.warnings))
             self.warning_label.show()
         else:
             self.warning_label.hide()
+
+        s = result.summary()
+        self.cards["added"].set_value(s["added"])
+        self.cards["removed"].set_value(s["removed"])
+        self.cards["version_changed"].set_value(s["version_changed"], f"↑{s['upgrade']}  ↓{s['downgrade']}")
+        self.cards["modified"].set_value(s["modified"])
+        self.cards["unchanged"].set_value(s["unchanged"])
+        n_attention = sum(1 for d in result.diffs if d.flags)
+        self.cards["attention"].set_value(n_attention)
+        self.cards["attention"].setToolTip(
+            "\n".join(f"{FLAG_LABELS[k]}: {s[k]}" for k in FLAG_LABELS if s.get(k)) or "要注意の変更はありません")
 
         for i, (name, statuses) in enumerate(_TABS):
             n = len(result.diffs) if statuses is None else result.count(*statuses)
@@ -277,8 +377,21 @@ class SbomCompareDialog(QDialog):
         if index < 0:
             return
         self._proxy.set_statuses(_TABS[index][1])
-        self.status_label.setText(f"{self._proxy.rowCount()} 件を表示")
-        if self._proxy.rowCount():
+        self._refresh_view(select_first=True)
+
+    def _on_attention_toggled(self, on: bool):
+        self._proxy.set_attention_only(on)
+        self._refresh_view(select_first=True)
+
+    def _on_card_clicked(self, key: str, tab: int):
+        self.attention_check.setChecked(key == "attention")
+        if self.tab_bar.currentIndex() == tab:
+            self._on_tab_changed(tab)
+        else:
+            self.tab_bar.setCurrentIndex(tab)
+
+    def _refresh_view(self, select_first: bool = False):
+        if select_first and self._proxy.rowCount():
             self.table.selectRow(0)
         self._show_detail()
 
@@ -298,7 +411,8 @@ class SbomCompareDialog(QDialog):
             msg = "差分はありません。" if not self.result.count(
                 DiffStatus.ADDED, DiffStatus.REMOVED, DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED) \
                 else "左の一覧からパッケージを選択すると、詳細を表示します。"
-            self.detail.setHtml(f"<p style='color:#555555'>{msg}</p>")
+            muted = theme.tokens().text_muted
+            self.detail.setHtml(f"<p style='color:{muted}'>{msg}</p>")
             return
         self.detail.setHtml(detail_html(d, self.result))
 
@@ -331,8 +445,8 @@ class SbomCompareDialog(QDialog):
 
     def _change_options(self):
         r = self.result
-        dlg = CompareSetupDialog(self, title="比較条件の変更", base_text=r.doc_a.label, target_text=r.doc_b.label, ask_target=False,
-                                 mode=r.mode, groups=r.groups)
+        dlg = CompareSetupDialog(self, title="比較条件の変更", base_text=r.doc_a.label, target_text=r.doc_b.label,
+                                 ask_target=False, mode=r.mode, groups=r.groups)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         mode, groups = dlg.match_mode(), dlg.selected_groups()

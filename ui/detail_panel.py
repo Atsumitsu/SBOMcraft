@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from core.parser import SBOMNode
 from core.serializer import apply_flat_rows, json_default, PACKAGE_PRIORITY_KEYS
 from ui.dialogs import FullTextDialog
+from ui import theme
 
 class DetailPanel(QWidget):
     # ▼【新規】ノードのデータが更新されたことを親に知らせるシグナル
@@ -54,7 +55,7 @@ class DetailPanel(QWidget):
         icon_label = QLabel()
         icon_path = os.path.join("icons", "table-2.svg")
         if os.path.exists(icon_path):
-            icon_label.setPixmap(QIcon(icon_path).pixmap(16, 16))
+            icon_label.setPixmap((theme.icon("table-2.svg") or QIcon(icon_path)).pixmap(16, 16))
         kv_header_layout.addWidget(icon_label)
 
         title_label = QLabel("プロパティ (Key-Value)")
@@ -66,18 +67,35 @@ class DetailPanel(QWidget):
         kv_header_layout.addStretch()
 
         # ▼ アクションボタン群の配置
-        self.btn_edit = QPushButton("✏️ 編集")
+        icon_path = os.path.join("icons", "square-pen.svg")
+        self.btn_edit = (
+            QPushButton(QIcon(icon_path).pixmap(16, 16), " 編集")
+            if os.path.isfile(icon_path)
+            else QPushButton("✏️ 編集")
+        )
         self.btn_edit.clicked.connect(self.start_edit_mode)
         self.btn_edit.setEnabled(False)  # ノード選択後、編集可能な種別のときだけ有効化
         self.btn_edit.setToolTip(self.NOT_EDITABLE_TOOLTIP)
         kv_header_layout.addWidget(self.btn_edit)
 
-        self.btn_reset = QPushButton("🔄 リセット")
+        icon_path = os.path.join("icons", "undo-2.svg")
+        self.btn_reset = (
+            QPushButton(QIcon(icon_path).pixmap(16, 16), " リセット")
+            if os.path.isfile(icon_path)
+            else QPushButton("🔄 リセット")
+        )
+        self.btn_reset.setProperty("variant", "ghost")
         self.btn_reset.clicked.connect(self.reset_edits)
         self.btn_reset.setVisible(False)  # 初期状態は非表示
         kv_header_layout.addWidget(self.btn_reset)
 
-        self.btn_save = QPushButton("💾 保存")
+        icon_path = os.path.join("icons", "save.svg")
+        self.btn_save = (
+            QPushButton(QIcon(icon_path).pixmap(16, 16), " 保存")
+            if os.path.isfile(icon_path)
+            else QPushButton("💾 保存")
+        )
+        self.btn_save.setProperty("variant", "primary")
         self.btn_save.clicked.connect(self.save_edits)
         self.btn_save.setVisible(False)  # 初期状態は非表示
         kv_header_layout.addWidget(self.btn_save)
@@ -85,6 +103,8 @@ class DetailPanel(QWidget):
         kv_layout.addLayout(kv_header_layout)
         
         self.table_widget = QTableWidget(0, 2)
+        self.table_widget.setShowGrid(False)
+        self.table_widget.verticalHeader().setVisible(False)
         self.table_widget.setHorizontalHeaderLabels(["キー (Key)", "値 (Value)"])
         self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -105,7 +125,7 @@ class DetailPanel(QWidget):
         json_icon_label = QLabel()
         json_icon_path = os.path.join("icons", "file-braces.svg")
         if os.path.exists(json_icon_path):
-            json_icon_label.setPixmap(QIcon(json_icon_path).pixmap(16, 16))
+            json_icon_label.setPixmap((theme.icon("file-braces.svg") or QIcon(json_icon_path)).pixmap(16, 16))
         json_header_layout.addWidget(json_icon_label)
 
         # 2. タイトルテキスト
@@ -117,7 +137,12 @@ class DetailPanel(QWidget):
         json_header_layout.addStretch()
         
         # 3. 全文表示ボタン
-        self.btn_full_text = QPushButton("🔍 全文を別窓で表示")
+        icon_path = os.path.join("icons", "text-search.svg")
+        self.btn_full_text = (
+            QPushButton(QIcon(icon_path).pixmap(16, 16), " 全文を別窓で表示")
+            if os.path.isfile(icon_path)
+            else QPushButton("🔍 全文を別窓で表示")
+        )
         self.btn_full_text.setEnabled(False)
         self.btn_full_text.clicked.connect(self.show_full_text_dialog)
         json_header_layout.addWidget(self.btn_full_text)
@@ -126,9 +151,7 @@ class DetailPanel(QWidget):
         
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
-        font = self.text_edit.font()
-        font.setFamily("Courier New")
-        self.text_edit.setFont(font)
+        self.text_edit.setFont(theme.mono_font(10))
         json_layout.addWidget(self.text_edit)
         inner_splitter.addWidget(json_container)
 
@@ -203,7 +226,7 @@ class DetailPanel(QWidget):
                 key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 
                 # キー部分の色を少し変えるなどして「ここは編集できない」感を出すと親切です
-                key_item.setForeground(Qt.GlobalColor.darkGray)
+                key_item.setForeground(QColor(theme.tokens().text_muted))
 
                 # ▼【新規】インデント等を除いた純粋なキー名を取得
                 clean_key = key.strip()
@@ -266,7 +289,7 @@ class DetailPanel(QWidget):
         )
         
         # 編集モード中であることをわかりやすくするため、Value列（列1）の背景色を変更する
-        edit_bg_color = QColor("#fffdf0")  # 薄い黄色
+        edit_bg_color = QColor(theme.tokens().warning_bg)  # 編集可能セルの背景
         for row in range(self.table_widget.rowCount()):
             val_item = self.table_widget.item(row, 1)
             if val_item:

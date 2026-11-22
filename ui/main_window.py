@@ -7,7 +7,7 @@ import sys
 import html
 import traceback
 from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor,QIcon, QPixmap
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor, QIcon, QPixmap, QActionGroup
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter, 
     QVBoxLayout, QHBoxLayout, QLabel, QHeaderView, 
@@ -36,6 +36,8 @@ from core.drop_plan import DropKind, plan_drop
 from core.compare_worker import CompareWorker
 from ui.compare_dialog import SbomCompareDialog
 from ui.compare_setup_dialog import CompareSetupDialog
+from ui import theme
+from ui.widgets import ISSUE_ROLE, TreeIssueDelegate, strip_leading_emoji
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -62,6 +64,7 @@ class MainWindow(QMainWindow):
         self.license_manager = SPDXLicenseManager()
 
         self.init_ui()
+        
         # ドラッグ＆ドロップ: 入力欄などが先にドロップを受けてパスを書き込まないよう、アプリ全体のフィルターで先に処理する
         self.setAcceptDrops(True)
         for w in self.findChildren(QWidget):          # 入力欄などが先にドロップを受けて、パスを書き込まないようにする
@@ -72,6 +75,7 @@ class MainWindow(QMainWindow):
         self.validator_thread = None
 
     def init_ui(self):
+        self._menu_buttons = []      # テーマ切替時にアイコンを塗り直すために保持
         # -------------------------------------------------------------
         # 1. メニューバーの構築
         # -------------------------------------------------------------
@@ -79,23 +83,7 @@ class MainWindow(QMainWindow):
         menu_toolbar.setMovable(False)
         from PySide6.QtCore import QSize
         menu_toolbar.setIconSize(QSize(16, 16))
-        menu_toolbar.setStyleSheet("""
-            QToolBar {
-                background: transparent;
-                border-bottom: 1px solid #e0e0e0;
-                spacing: 5px;
-                padding: 2px;
-            }
-            QToolButton {
-                padding: 1px 10px 3px 10px;
-                border-radius: 4px;
-                background: transparent;
-                
-            }
-            QToolButton:hover {
-                background-color: #e8f0fe;
-            }
-        """)
+        menu_toolbar.setObjectName("MenuToolbar")
 
         # 💡 ボタンとメニューをまとめて生成する保守しやすいヘルパー関数
         def add_menu_button(title: str, icon_filename: str, menu: QMenu) -> QToolButton:
@@ -103,21 +91,32 @@ class MainWindow(QMainWindow):
             btn.setText(title)
             icon_path = os.path.join("icons", icon_filename)
             if os.path.exists(icon_path):
-                btn.setIcon(QIcon(icon_path))
+                btn.setIcon(theme.icon(icon_filename) or QIcon(icon_path))
             btn.setMenu(menu)
             btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
             btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             menu_toolbar.addWidget(btn)
+            self._menu_buttons.append((btn, icon_filename))
             return btn
 
         # --- File メニュー用ボタンの作成 ---
         # ボタンを押したときに展開されるポップアップメニューを作成
         file_menu = QMenu(self)
-        
-        open_icon = QIcon(os.path.join("icons", "book-open.svg"))
+
+        open_icon = theme.icon("book-open.svg") or QIcon(os.path.join("icons", "book-open.svg"))
         open_action = file_menu.addAction(open_icon, "Open SBOM JSON")
         open_action.setShortcut("Ctrl+O") # ショートカットキーも追加
         open_action.triggered.connect(self.open_file)
+
+        theme_menu = file_menu.addMenu("テーマ")
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+        for mode_key, mode_label in (("auto", "OS の設定に合わせる"), ("light", "ライト"), ("dark", "ダーク")):
+            act = theme_menu.addAction(mode_label)
+            act.setCheckable(True)
+            act.setChecked(theme.mode() == mode_key)
+            theme_group.addAction(act)
+            act.triggered.connect(lambda _checked=False, m=mode_key: self._set_theme_mode(m))
         
         file_menu.addSeparator() # 区切り線
 
@@ -207,6 +206,11 @@ class MainWindow(QMainWindow):
         self.tree_view = QTreeView()
         self.tree_view.setObjectName("tree_view")
 
+        self.tree_view.setItemDelegate(TreeIssueDelegate(self.tree_view))
+        self.tree_view.setIndentation(18)
+        self.tree_view.setUniformRowHeights(True)
+        self.tree_view.setIconSize(QSize(16, 16))
+
         # ▼ ツリービュー専用のキープレスイベントを動的にオーバーライド
         def custom_tree_key_press(event):
             text = event.text()
@@ -246,12 +250,11 @@ class MainWindow(QMainWindow):
         icon_path = os.path.join("icons", "monitor.svg") # .png の場合は拡張子を変更
         if os.path.exists(icon_path):
             # QIcon経由で読み込むと SVG でも PNG でも指定サイズに綺麗に描画されます
-            pixmap = QIcon(icon_path).pixmap(16, 16)
-            icon_label.setPixmap(pixmap)
+            icon_label.setPixmap((theme.icon("monitor.svg") or QIcon(icon_path)).pixmap(16, 16))
         header_layout.addWidget(icon_label)
 
         my_label = QLabel("コンソール")
-        my_label.setStyleSheet("font-weight: bold;") # 少し太字にするとGitHub風になります
+        my_label.setProperty("role", "section")
         header_layout.addWidget(my_label)
         header_layout.addStretch() # 左寄せにするためのスペーサー
 
@@ -360,40 +363,7 @@ class MainWindow(QMainWindow):
         # HTML形式の検証結果レポートをレンダリングして表示
         self.compliance_report.setHtml(result["report_html"])
         
-        # エラー箇所を赤く染めるUI処理
-        if result.get("error_packages"):
-            root_item = self.tree_model.item(0, 0)
-            tree_pkg_folder_item = None
-            if root_item:
-                for row in range(root_item.rowCount()):
-                    child_item = root_item.child(row, 0)
-                    if child_item and "Packages" in child_item.text():
-                        tree_pkg_folder_item = child_item
-                        break
-
-            if tree_pkg_folder_item:
-                warning_color = QColor("#FFCCCC")
-                
-                # 💡 【修正】エラー情報の SPDXID をキーにした辞書マップを作成
-                error_map = {}
-                for err in result["error_packages"]:
-                    err_msgs = [e.get("msg", "") for e in err.get("errors", [])]
-                    reasons_str = ", ".join(err_msgs) if err_msgs else "警告あり"
-                    error_map[err["spdx_id"]] = reasons_str
-
-                # 💡 【修正】インデックスに頼らず、ツリー内のノードの SPDXID と突合してハイライトする
-                for row in range(tree_pkg_folder_item.rowCount()):
-                    pkg_item_name = tree_pkg_folder_item.child(row, 0)
-                    pkg_item_id = tree_pkg_folder_item.child(row, 1)
-                    
-                    if pkg_item_name and pkg_item_id:
-                        node = pkg_item_name.data(Qt.ItemDataRole.UserRole)
-                        if node and node.spdx_id in error_map:
-                            reasons_str = error_map[node.spdx_id]
-                            pkg_item_name.setBackground(warning_color)
-                            pkg_item_id.setBackground(warning_color)
-                            if not pkg_item_name.text().startswith("⚠️"):
-                                pkg_item_name.setText(f"⚠️ {pkg_item_name.text()} 【{reasons_str}】")
+        self._mark_validation_issues(result.get("error_packages", []))
 
         # 無効化していたメニューやボタンの復元
         if hasattr(self, 'set_validation_menu_enabled'):
@@ -401,6 +371,42 @@ class MainWindow(QMainWindow):
 
         # メモリ解放・ワーカー参照のクリア
         self.validation_worker = None
+
+    def _mark_validation_issues(self, error_packages: list):
+        """検証結果をツリーに反映する。行は塗らず、左端の色バーと名前の横のバッジで示す。"""
+        root_item = self.tree_model.item(0, 0)
+        if root_item is None:
+            return
+        folder = None
+        for row in range(root_item.rowCount()):
+            child = root_item.child(row, 0)
+            if child is not None and child.data(Qt.ItemDataRole.UserRole) is not None \
+                    and child.data(Qt.ItemDataRole.UserRole).node_type == "packages_folder":
+                folder = child
+                break
+        if folder is None:
+            return
+
+        issues = {}
+        for err in error_packages:
+            errs = [e.get("msg", "") for e in err.get("errors", [])]
+            warns = [w.get("msg", "") for w in err.get("warnings", [])]
+            if errs:
+                text = errs[0] + (f"（他 {len(errs) - 1} 件）" if len(errs) > 1 else "")
+                issues[err["spdx_id"]] = (("error", text), "\n".join(errs + warns))
+            else:
+                text = (warns[0] if warns else "警告あり") + (f"（他 {len(warns) - 1} 件）" if len(warns) > 1 else "")
+                issues[err["spdx_id"]] = (("warning", text), "\n".join(warns))
+
+        for row in range(folder.rowCount()):
+            item = folder.child(row, 0)
+            if item is None:
+                continue
+            node = item.data(Qt.ItemDataRole.UserRole)
+            found = issues.get(node.spdx_id) if node is not None else None
+            item.setData(list(found[0]) if found else None, ISSUE_ROLE)
+            item.setToolTip(found[1] if found else "")
+        self.tree_view.viewport().update()
 
     def export_to_cyclonedx(self):
         """現在のSBOMデータをCycloneDX形式に変換して保存する"""
@@ -573,7 +579,8 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Parser Error", f"An error occurred while parsing:\n{error_msg}") 
 
     def populate_tree(self, node: SBOMNode, parent_item: QStandardItem):
-        item_name = QStandardItem(node.name)
+        item_name = QStandardItem()
+        self._apply_node_appearance(item_name, node)
         item_name.setData(node, Qt.ItemDataRole.UserRole)
         item_name.setEditable(False)  # ▼ ダブルクリックでの編集を禁止
 
@@ -591,6 +598,27 @@ class MainWindow(QMainWindow):
         
         for child in children_to_process:
             self.populate_tree(child, item_name)
+
+    _NODE_ICONS = {
+        "document": "book-open.svg",
+        "document_info": "info.svg",
+        "packages_folder": "folder.svg",
+        "category_folder": "folder.svg",
+        "relations_folder": "folder.svg",
+        "package": "package.svg",
+        "file": "file-text.svg",
+        "relationship": "link.svg",
+        "licenses": "scale.svg",
+    }
+
+    def _apply_node_appearance(self, item: QStandardItem, node: SBOMNode):
+        """アイコンがあれば『アイコン + 絵文字なしの名前』、無ければ従来どおり絵文字付きの名前で表示する"""
+        icon = theme.icon(self._NODE_ICONS.get(node.node_type, ""))
+        if icon is not None:
+            item.setText(strip_leading_emoji(node.name))
+            item.setIcon(icon)
+        else:
+            item.setText(node.name)
 
     def on_tree_item_clicked(self, index: QModelIndex):
         if not index.parent().isValid():
@@ -807,7 +835,8 @@ class MainWindow(QMainWindow):
             if item:
                 node = item.data(Qt.ItemDataRole.UserRole)
                 if node == updated_node:
-                    item.setText(updated_node.name)
+#                    item.setText(updated_node.name)
+                    self._apply_node_appearance(item, updated_node)
                     return
 
         # 2. フォールバック：ツリー全体を再帰的に走査して該当ノードを更新
@@ -818,7 +847,8 @@ class MainWindow(QMainWindow):
                 if item:
                     node = item.data(Qt.ItemDataRole.UserRole)
                     if node == updated_node:
-                        item.setText(updated_node.name)
+#                        item.setText(updated_node.name)
+                        self._apply_node_appearance(item, updated_node)
                         return True
                 
                 if model.hasChildren(index):
@@ -1022,7 +1052,8 @@ class MainWindow(QMainWindow):
                     continue
                 node = item.data(Qt.ItemDataRole.UserRole)
                 if node is not None and id(node) in targets:
-                    item.setText(node.name)
+#                    item.setText(node.name)
+                    self._apply_node_appearance(item, node)
                     del targets[id(node)]
                 if item.rowCount():
                     stack.append(item)
@@ -1478,3 +1509,34 @@ class MainWindow(QMainWindow):
             for msg in warnings:
                 self.compliance_report.append(f"&nbsp;&nbsp;・{html.escape(msg)}")
         return True
+
+    def _set_theme_mode(self, mode: str):
+        theme.apply_theme(QApplication.instance(), mode)
+        self.settings.setValue("theme_mode", mode)
+
+    def changeEvent(self, event):
+        # テーマ（パレット）が変わったら、色を塗ったアイコンを塗り直す
+        if event.type() == QEvent.Type.ApplicationPaletteChange:
+            self._refresh_theme_assets()
+        super().changeEvent(event)
+
+    def _refresh_theme_assets(self):
+        for btn, filename in getattr(self, "_menu_buttons", []):
+            ico = theme.icon(filename)
+            if ico is not None:
+                btn.setIcon(ico)
+        model = getattr(self, "tree_model", None)
+        if model is None:
+            return
+        stack = [model.invisibleRootItem()]
+        while stack:
+            parent = stack.pop()
+            for row in range(parent.rowCount()):
+                item = parent.child(row, 0)
+                if item is None:
+                    continue
+                node = item.data(Qt.ItemDataRole.UserRole)
+                if node is not None:
+                    self._apply_node_appearance(item, node)
+                if item.rowCount():
+                    stack.append(item)

@@ -1,29 +1,44 @@
 # core/compare_report.py
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 XZ Manj
-"""比較結果の表示用 HTML を作る（Qt 非依存。比較ウィンドウのサマリ／詳細ペインで使う）。"""
+"""比較結果の表示用 HTML を作る（Qt 非依存。比較ウィンドウのサマリ／詳細ペインで使う）。
+
+配色は set_colors() で差し替えられる（ui/theme.py がテーマ適用時に呼ぶ）。
+未設定のときはライトテーマ相当の既定値を使うので、単体テストは Qt なしで動く。
+"""
 
 from __future__ import annotations
 
 import html
-from typing import List
+from typing import Dict, List
 
 from core.comparer import (
     CompareResult, DiffStatus, DocInfo, FLAG_CHECKSUM_MISMATCH, FLAG_LABELS, FieldChange, PackageDiff,
     STATUS_LABELS, VERSION_CHANGE_LABELS,
 )
 
-# 明るい背景に暗い文字を明示する（OS のダークテーマでも読めるようにする）
-STATUS_COLORS = {
-    DiffStatus.ADDED: "#DFF5E1",
-    DiffStatus.REMOVED: "#FFD9D9",
-    DiffStatus.VERSION_CHANGED: "#FFF0B3",
-    DiffStatus.MODIFIED: "#FFF8D6",
-    DiffStatus.UNCHANGED: "#FFFFFF",
+_DEFAULT_COLORS: Dict[str, str] = {
+    "text": "#1F2937", "muted": "#6B7280", "border": "#C9CED6",
+    "danger": "#991B1B", "note": "#92400E",
+    "old_bg": "#FDECEC", "new_bg": "#E7F6EC",
+    "added_bg": "#E7F6EC", "added_fg": "#166534",
+    "removed_bg": "#FDECEC", "removed_fg": "#991B1B",
+    "version_changed_bg": "#FEF3C7", "version_changed_fg": "#92400E",
+    "modified_bg": "#E0F2FE", "modified_fg": "#075985",
+    "unchanged_bg": "#F1F3F6", "unchanged_fg": "#6B7280",
 }
-_OLD_BG = "#FFE3E3"
-_NEW_BG = "#E1F5E4"
-_TEXT = "#000000"
+_colors: Dict[str, str] = dict(_DEFAULT_COLORS)
+
+# 旧 API 互換（ライト既定の背景色）。新しいコードは _chip() を使う
+STATUS_COLORS = {s: _DEFAULT_COLORS[f"{s.value}_bg"] for s in DiffStatus}
+
+
+def set_colors(colors: Dict[str, str]) -> None:
+    _colors.update(colors)
+
+
+def _c(key: str) -> str:
+    return _colors[key]
 
 
 def _e(s) -> str:
@@ -34,43 +49,54 @@ def _signed(n: int) -> str:
     return f"+{n}" if n > 0 else str(n)
 
 
+def _chip(status: DiffStatus, text: str) -> str:
+    v = status.value
+    return f"<span style='background:{_c(v + '_bg')};color:{_c(v + '_fg')}'>&nbsp;{_e(text)}&nbsp;</span>"
+
+
 def _doc_line(tag: str, doc: DocInfo) -> str:
     detail = " / ".join(x for x in (doc.name, doc.spdx_version, doc.created) if x)
     return (f"<b>{_e(tag)}</b> {_e(doc.label)}"
-            f"<span style='color:#555555'>　{_e(detail)}　({doc.package_count} packages)</span>")
+            f"<span style='color:{_c('muted')}'>　{_e(detail)}　({doc.package_count} packages)</span>")
+
+
+def docs_html(result: CompareResult) -> str:
+    """A・B 2 つのドキュメント情報（統計カードの上に表示する）"""
+    return "<br>".join([_doc_line("A（旧）", result.doc_a), _doc_line("B（新）", result.doc_b)])
 
 
 def summary_html(result: CompareResult) -> str:
     s = result.summary()
     other_ver = s["version_changed"] - s["upgrade"] - s["downgrade"]
+    ver_text = f"バージョン変更 {s['version_changed']}（↑{s['upgrade']} ↓{s['downgrade']}" \
+               + (f" その他{other_ver}" if other_ver else "") + "）"
     parts = [
         f"パッケージ総数: 旧 {s['total_a']} → 新 {s['total_b']} ({_signed(s['total_b'] - s['total_a'])})",
-        f"<span style='background:{STATUS_COLORS[DiffStatus.ADDED]}'>&nbsp;追加 {s['added']}&nbsp;</span>",
-        f"<span style='background:{STATUS_COLORS[DiffStatus.REMOVED]}'>&nbsp;削除 {s['removed']}&nbsp;</span>",
-        f"<span style='background:{STATUS_COLORS[DiffStatus.VERSION_CHANGED]}'>&nbsp;"
-        f"バージョン変更 {s['version_changed']}（↑{s['upgrade']} ↓{s['downgrade']}"
-        + (f" その他{other_ver}" if other_ver else "") + ")&nbsp;</span>",
-        f"<span style='background:{STATUS_COLORS[DiffStatus.MODIFIED]}'>&nbsp;その他の変更 {s['modified']}&nbsp;</span>",
+        _chip(DiffStatus.ADDED, f"追加 {s['added']}"),
+        _chip(DiffStatus.REMOVED, f"削除 {s['removed']}"),
+        _chip(DiffStatus.VERSION_CHANGED, ver_text),
+        _chip(DiffStatus.MODIFIED, f"その他の変更 {s['modified']}"),
         f"未変更 {s['unchanged']}",
     ]
-    lines = [_doc_line("A（旧）", result.doc_a), _doc_line("B（新）", result.doc_b), "　".join(parts)]
+    lines = [docs_html(result), "　".join(parts)]
     attention = [f"⚠ {FLAG_LABELS[k]} {s[k]}" for k in FLAG_LABELS if s.get(k)]
     if attention:
-        lines.append(f"<span style='color:#B00020'><b>{_e('　'.join(attention))}</b></span>")
+        lines.append(f"<span style='color:{_c('danger')}'><b>{_e('　'.join(attention))}</b></span>")
     return "<br>".join(lines)
 
 
 def _row(label: str, old: str, new: str) -> str:
-    return (f"<tr><td style='padding:3px 8px'><b>{_e(label)}</b></td>"
-            f"<td style='padding:3px 8px;background:{_OLD_BG};color:{_TEXT}'>{old}</td>"
-            f"<td style='padding:3px 8px;background:{_NEW_BG};color:{_TEXT}'>{new}</td></tr>")
+    pad = "padding:4px 8px"
+    return (f"<tr><td style='{pad}'><b>{_e(label)}</b></td>"
+            f"<td style='{pad};background:{_c('old_bg')};color:{_c('text')}'>{old}</td>"
+            f"<td style='{pad};background:{_c('new_bg')};color:{_c('text')}'>{new}</td></tr>")
 
 
 def _scalar_cell(value) -> str:
     if value is None:
-        return "<i style='color:#777777'>（なし）</i>"
+        return f"<i style='color:{_c('muted')}'>（なし）</i>"
     if value == "":
-        return "<i style='color:#777777'>（空）</i>"
+        return f"<i style='color:{_c('muted')}'>（空）</i>"
     return _e(value).replace("\n", "<br>")
 
 
@@ -94,10 +120,9 @@ def _props_summary(node) -> str:
 
 
 def detail_html(diff: PackageDiff, result: CompareResult) -> str:
-    color = STATUS_COLORS[diff.status]
     out = [
         f"<h3 style='margin-bottom:2px'>{_e(diff.name)}</h3>",
-        f"<p style='margin-top:2px'><span style='background:{color};color:{_TEXT}'>&nbsp;{STATUS_LABELS[diff.status]}&nbsp;</span>",
+        f"<p style='margin-top:2px'>{_chip(diff.status, STATUS_LABELS[diff.status])}",
     ]
     if diff.matched_by:
         out.append(f"　突合: {_e(diff.matched_by)}")
@@ -105,12 +130,12 @@ def detail_html(diff: PackageDiff, result: CompareResult) -> str:
 
     if diff.flags:
         mism = FLAG_CHECKSUM_MISMATCH in diff.flags
-        out.append("<p style='color:#B00020'><b>⚠ " + _e(" / ".join(FLAG_LABELS[f] for f in diff.flags)) + "</b>")
+        out.append(f"<p style='color:{_c('danger')}'><b>⚠ " + _e(" / ".join(FLAG_LABELS[f] for f in diff.flags)) + "</b>")
         if mism:
             out.append("<br>同じバージョンなのに checksum が一致しません。再ビルド・再配布・すり替えの可能性があるため確認してください。")
         out.append("</p>")
     for note in diff.notes:
-        out.append(f"<p style='color:#8A5A00'>ℹ {_e(note)}</p>")
+        out.append(f"<p style='color:{_c('note')}'>ℹ {_e(note)}</p>")
 
     a_head = f"A（旧）<br><small>{_e(result.doc_a.label)}</small>"
     b_head = f"B（新）<br><small>{_e(result.doc_b.label)}</small>"
@@ -125,9 +150,9 @@ def detail_html(diff: PackageDiff, result: CompareResult) -> str:
         for fc in diff.field_changes:
             rows.extend(_change_rows(fc))
         if rows:
-            out.append("<table cellspacing='0' cellpadding='0' border='1' style='border-collapse:collapse;border-color:#BBBBBB'>"
-                       f"<tr><th style='padding:3px 8px'>項目</th><th style='padding:3px 8px'>{a_head}</th>"
-                       f"<th style='padding:3px 8px'>{b_head}</th></tr>{''.join(rows)}</table>")
+            out.append(f"<table cellspacing='0' cellpadding='0' border='1' style='border-collapse:collapse;border-color:{_c('border')}'>"
+                       f"<tr><th style='padding:4px 8px'>項目</th><th style='padding:4px 8px'>{a_head}</th>"
+                       f"<th style='padding:4px 8px'>{b_head}</th></tr>{''.join(rows)}</table>")
         else:
             out.append("<p>比較対象の項目に差分はありません。</p>")
     else:
