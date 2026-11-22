@@ -15,9 +15,10 @@ from PySide6.QtWidgets import (
 
 from core.compare_report import detail_html, docs_html
 from core.comparer import (
-    CompareResult, DiffStatus, FLAG_LABELS, PackageDiff, STATUS_LABELS, VERSION_CHANGE_LABELS,
-    compare, export_csv,
+    ALL_FLAGS, CompareResult, DiffStatus, PackageDiff, compare, export_csv,
+    flag_label, status_label, version_change_label,
 )
+from core.i18n import t
 from ui import theme
 from ui.compare_setup_dialog import CompareSetupDialog
 from ui.widgets import StatCard
@@ -31,7 +32,9 @@ DIFF_ROLE = Qt.ItemDataRole.UserRole + 2
 
 
 class DiffTableModel(QAbstractTableModel):
-    HEADERS = ["状態", "パッケージ名", "旧バージョン (A)", "新バージョン (B)", "変更項目", "要注意"]
+    # 見出しは「キー」だけ持ち、表示するときに t() で翻訳する（クラス属性で t() を呼ぶと import 時に言語が固定されるため）
+    HEADER_KEYS = ["compare.col.status", "compare.col.name", "compare.col.old_version",
+                   "compare.col.new_version", "compare.col.changed_fields", "compare.col.attention"]
 
     def __init__(self, diffs: List[PackageDiff], parent=None):
         super().__init__(parent)
@@ -46,18 +49,18 @@ class DiffTableModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self.diffs)
 
     def columnCount(self, parent=QModelIndex()):
-        return 0 if parent.isValid() else len(self.HEADERS)
+        return 0 if parent.isValid() else len(self.HEADER_KEYS)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            return self.HEADERS[section]
+            return t(self.HEADER_KEYS[section])
         return None
 
     @staticmethod
     def _text(d: PackageDiff, col: int) -> str:
         if col == 0:
             arrow = _ARROWS.get(d.version_change, "")
-            return STATUS_LABELS[d.status] + (f" {arrow}" if arrow else "")
+            return status_label(d.status) + (f" {arrow}" if arrow else "")
         if col == 1:
             return d.name
         if col == 2:
@@ -66,7 +69,7 @@ class DiffTableModel(QAbstractTableModel):
             return d.version_b
         if col == 4:
             return ", ".join(d.changed_fields)
-        return "⚠ " + " / ".join(FLAG_LABELS[f] for f in d.flags) if d.flags else ""
+        return "⚠ " + " / ".join(flag_label(f) for f in d.flags) if d.flags else ""
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
@@ -78,15 +81,17 @@ class DiffTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.ToolTipRole:
             tip = self._text(d, col)
             if col == 0 and d.version_change:
-                tip = f"{STATUS_LABELS[d.status]}（{VERSION_CHANGE_LABELS[d.version_change]}）"
+                tip = t("compare.tooltip.status_change",
+                        status=status_label(d.status), change=version_change_label(d.version_change))
             return tip or None
         if role == Qt.ItemDataRole.ForegroundRole:
             # 行全体は塗らない。要注意だけ赤、未変更は控えめな色にする
-            t = theme.tokens()
+            # ※ ローカル変数名を t にすると、上の t(...) が UnboundLocalError になるため tok とする
+            tok = theme.tokens()
             if col == 5 and d.flags:
-                return QColor(t.danger_fg)
+                return QColor(tok.danger_fg)
             if d.status == DiffStatus.UNCHANGED:
-                return QColor(t.text_muted)
+                return QColor(tok.text_muted)
             return None
         if role == SORT_ROLE:
             if col == 0:
@@ -163,28 +168,28 @@ class DiffFilterProxy(QSortFilterProxyModel):
             return False
         if self._terms:
             hay = " ".join((d.name, d.key, d.version_a, d.version_b, d.spdx_id_a, d.spdx_id_b)).lower()
-            return all(t in hay for t in self._terms)
+            return all(t in hay for t in self._terms)      # ← この t はリスト内包の変数（関数 t とは別スコープ）
         return True
 
 
-# タブ定義: (表示名, 対象の状態 / None=すべて)
+# タブ定義: (表示名のキー, 対象の状態 / None=すべて)。表示するときに t(キー) で翻訳する
 _TABS = [
-    ("差分", {DiffStatus.ADDED, DiffStatus.REMOVED, DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED}),
-    ("追加", {DiffStatus.ADDED}),
-    ("削除", {DiffStatus.REMOVED}),
-    ("変更", {DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED}),
-    ("未変更", {DiffStatus.UNCHANGED}),
-    ("すべて", None),
+    ("compare.tab.diff", {DiffStatus.ADDED, DiffStatus.REMOVED, DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED}),
+    ("compare.tab.added", {DiffStatus.ADDED}),
+    ("compare.tab.removed", {DiffStatus.REMOVED}),
+    ("compare.tab.changed", {DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED}),
+    ("compare.tab.unchanged", {DiffStatus.UNCHANGED}),
+    ("compare.tab.all", None),
 ]
 
-# 統計カード: (キー, 表示名, 色の系統, クリックで開くタブ)
+# 統計カード: (キー, 表示名のキー, 色の系統, クリックで開くタブ)
 _CARDS = [
-    ("added", "追加", "success", 1),
-    ("removed", "削除", "danger", 2),
-    ("version_changed", "バージョン変更", "warning", 3),
-    ("modified", "その他の変更", "info", 3),
-    ("unchanged", "未変更", "neutral", 4),
-    ("attention", "⚠ 要注意", "danger", 0),
+    ("added", "compare.card.added", "success", 1),
+    ("removed", "compare.card.removed", "danger", 2),
+    ("version_changed", "compare.card.version_changed", "warning", 3),
+    ("modified", "compare.card.modified", "info", 3),
+    ("unchanged", "compare.card.unchanged", "neutral", 4),
+    ("attention", "compare.card.attention", "danger", 0),
 ]
 
 
@@ -229,9 +234,9 @@ class SbomCompareDialog(QDialog):
         cards_row = QHBoxLayout()
         cards_row.setSpacing(10)
         self.cards = {}
-        for key, caption, tone, tab in _CARDS:
-            card = StatCard(caption, tone)
-            card.clicked.connect(lambda k=key, t=tab: self._on_card_clicked(k, t))
+        for key, caption_key, tone, tab in _CARDS:
+            card = StatCard(t(caption_key), tone)
+            card.clicked.connect(lambda k=key, tb=tab: self._on_card_clicked(k, tb))
             cards_row.addWidget(card, 1)
             self.cards[key] = card
         layout.addLayout(cards_row)
@@ -249,19 +254,19 @@ class SbomCompareDialog(QDialog):
         self.tab_bar = QTabBar()
         self.tab_bar.setExpanding(False)
         self.tab_bar.setDrawBase(False)
-        for name, _ in _TABS:
-            self.tab_bar.addTab(name)
+        for name_key, _ in _TABS:
+            self.tab_bar.addTab(t(name_key))
         self.tab_bar.currentChanged.connect(self._on_tab_changed)
         filter_row.addWidget(self.tab_bar)
         filter_row.addStretch(1)
-        self.attention_check = QCheckBox("⚠ 要注意のみ")
+        self.attention_check = QCheckBox(t("compare.ui.attention_only"))
         self.attention_check.toggled.connect(self._on_attention_toggled)
         filter_row.addWidget(self.attention_check)
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("検索（名前・バージョン・SPDXID。スペース区切りで AND）")
+        self.search_edit.setPlaceholderText(t("compare.ui.search_placeholder"))
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.setMinimumWidth(320)
-        self.search_edit.textChanged.connect(lambda t: (self._proxy.set_text(t), self._refresh_view()))
+        self.search_edit.textChanged.connect(lambda text: (self._proxy.set_text(text), self._refresh_view()))
         filter_row.addWidget(self.search_edit)
         layout.addLayout(filter_row)
 
@@ -288,7 +293,7 @@ class SbomCompareDialog(QDialog):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
         header.setHighlightSections(False)
-        for col, width in enumerate((150, 240, 120, 120, 260, 200)):
+        for col, width in enumerate((150, 240, 140, 140, 260, 200)):   # 英語は見出しが長いので版数列を少し広げた
             self.table.setColumnWidth(col, width)
         self.table.doubleClicked.connect(lambda idx: self._jump_to_tree())
         splitter.addWidget(self.table)
@@ -305,26 +310,26 @@ class SbomCompareDialog(QDialog):
         self.status_label = QLabel()
         self.status_label.setProperty("role", "muted")
         bottom.addWidget(self.status_label, 1)
-        btn_opts = QPushButton("条件を変更...")
-        btn_opts.setToolTip("突合キーや比較する項目を変えて、もう一度比較します")
+        btn_opts = QPushButton(t("compare.ui.change_options"))
+        btn_opts.setToolTip(t("compare.ui.change_options_tip"))
         btn_opts.clicked.connect(self._change_options)
         bottom.addWidget(btn_opts)
-        btn_swap = QPushButton("A ⇄ B 入れ替え")
-        btn_swap.setToolTip("基準（旧）と対象（新）を入れ替えて、もう一度比較します")
+        btn_swap = QPushButton(t("compare.ui.swap"))
+        btn_swap.setToolTip(t("compare.ui.swap_tip"))
         btn_swap.clicked.connect(self._swap)
         bottom.addWidget(btn_swap)
-        btn_csv = QPushButton("CSV 出力...")
-        btn_csv.setToolTip("差分を CSV に出力します。現在のタブが『すべて』『未変更』のときは未変更の行も含めます。")
+        btn_csv = QPushButton(t("compare.ui.export_csv"))
+        btn_csv.setToolTip(t("compare.ui.export_csv_tip"))
         btn_csv.clicked.connect(self._export_csv)
         bottom.addWidget(btn_csv)
         bottom.addSpacing(8)
-        btn_close = QPushButton("閉じる")
+        btn_close = QPushButton(t("compare.ui.close"))
         btn_close.setProperty("variant", "ghost")
         btn_close.clicked.connect(self.close)
         bottom.addWidget(btn_close)
-        self.btn_jump = QPushButton("メインのツリーで表示")
+        self.btn_jump = QPushButton(t("compare.ui.jump"))
         self.btn_jump.setProperty("variant", "primary")
-        self.btn_jump.setToolTip("選択中のパッケージを、メイン画面のツリーで選択します（ダブルクリックでも可）")
+        self.btn_jump.setToolTip(t("compare.ui.jump_tip"))
         self.btn_jump.clicked.connect(self._jump_to_tree)
         bottom.addWidget(self.btn_jump)
         layout.addLayout(bottom)
@@ -345,7 +350,7 @@ class SbomCompareDialog(QDialog):
 
     def set_result(self, result: CompareResult):
         self.result = result
-        self.setWindowTitle(f"SBOM 比較 - {result.doc_a.label}  ⇄  {result.doc_b.label}")
+        self.setWindowTitle(t("compare.ui.window_title", a=result.doc_a.label, b=result.doc_b.label))
         self.docs_label.setText(docs_html(result))
 
         if result.warnings:
@@ -363,11 +368,12 @@ class SbomCompareDialog(QDialog):
         n_attention = sum(1 for d in result.diffs if d.flags)
         self.cards["attention"].set_value(n_attention)
         self.cards["attention"].setToolTip(
-            "\n".join(f"{FLAG_LABELS[k]}: {s[k]}" for k in FLAG_LABELS if s.get(k)) or "要注意の変更はありません")
+            "\n".join(f"{flag_label(k)}: {s[k]}" for k in ALL_FLAGS if s.get(k))
+            or t("compare.card.attention_none"))
 
-        for i, (name, statuses) in enumerate(_TABS):
+        for i, (name_key, statuses) in enumerate(_TABS):
             n = len(result.diffs) if statuses is None else result.count(*statuses)
-            self.tab_bar.setTabText(i, f"{name} ({n})")
+            self.tab_bar.setTabText(i, f"{t(name_key)} ({n})")
 
         self._model.set_diffs(result.diffs)
         self._proxy.sort(-1)
@@ -405,12 +411,12 @@ class SbomCompareDialog(QDialog):
         return self._proxy.data(self._proxy.index(idx.row(), 0), DIFF_ROLE)
 
     def _show_detail(self):
-        self.status_label.setText(f"{self._proxy.rowCount()} 件を表示")
+        self.status_label.setText(t("compare.ui.shown_count", n=self._proxy.rowCount()))
         d = self._current_diff()
         if d is None:
-            msg = "差分はありません。" if not self.result.count(
-                DiffStatus.ADDED, DiffStatus.REMOVED, DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED) \
-                else "左の一覧からパッケージを選択すると、詳細を表示します。"
+            has_diff = self.result.count(
+                DiffStatus.ADDED, DiffStatus.REMOVED, DiffStatus.VERSION_CHANGED, DiffStatus.MODIFIED)
+            msg = t("compare.ui.select_hint") if has_diff else t("compare.ui.no_diff")
             muted = theme.tokens().text_muted
             self.detail.setHtml(f"<p style='color:{muted}'>{msg}</p>")
             return
@@ -422,9 +428,9 @@ class SbomCompareDialog(QDialog):
             return
         for node in (d.node_a, d.node_b):
             if node is not None and self._jump(node):
-                self.status_label.setText("メインのツリーで選択しました。")
+                self.status_label.setText(t("compare.ui.jumped"))
                 return
-        self.status_label.setText("このパッケージは、メイン画面で開いている SBOM のツリーにありません。")
+        self.status_label.setText(t("compare.ui.jump_missing"))
 
     # -- ボタン -------------------------------------------------------------
 
@@ -434,7 +440,7 @@ class SbomCompareDialog(QDialog):
             result = compare(root_a, root_b, mode, groups, label_a=label_a, label_b=label_b)
         except Exception as e:
             QApplication.restoreOverrideCursor()
-            QMessageBox.critical(self, "比較エラー", f"{type(e).__name__}: {e}")
+            QMessageBox.critical(self, t("compare.ui.error_title"), f"{type(e).__name__}: {e}")
             return
         QApplication.restoreOverrideCursor()
         self.set_result(result)
@@ -445,8 +451,8 @@ class SbomCompareDialog(QDialog):
 
     def _change_options(self):
         r = self.result
-        dlg = CompareSetupDialog(self, title="比較条件の変更", base_text=r.doc_a.label, target_text=r.doc_b.label,
-                                 ask_target=False, mode=r.mode, groups=r.groups)
+        dlg = CompareSetupDialog(self, title=t("compare.ui.options_title"), base_text=r.doc_a.label,
+                                 target_text=r.doc_b.label, ask_target=False, mode=r.mode, groups=r.groups)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         mode, groups = dlg.match_mode(), dlg.selected_groups()
@@ -456,7 +462,8 @@ class SbomCompareDialog(QDialog):
 
     def _export_csv(self):
         default = os.path.join(self._start_dir or "", "sbom_diff.csv")
-        path, _ = QFileDialog.getSaveFileName(self, "差分を CSV に出力", default, "CSV Files (*.csv);;All Files (*)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, t("compare.ui.csv_dialog_title"), default, "CSV Files (*.csv);;All Files (*)")
         if not path:
             return
         if not os.path.splitext(path)[1]:
@@ -465,7 +472,6 @@ class SbomCompareDialog(QDialog):
         try:
             n = export_csv(self.result, path, include_unchanged=include_unchanged)
         except OSError as e:
-            QMessageBox.critical(self, "CSV 出力エラー",
-                                 f"書き出せませんでした（Excel などで開いたままになっていないか確認してください）:\n{e}")
+            QMessageBox.critical(self, t("compare.ui.csv_error_title"), t("compare.ui.csv_error_msg", error=e))
             return
-        self.status_label.setText(f"CSV に {n} 行を出力しました: {path}")
+        self.status_label.setText(t("compare.ui.csv_done", n=n, path=path))

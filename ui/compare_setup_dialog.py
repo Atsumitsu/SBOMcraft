@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
 )
 
-from core.comparer import ALL_GROUPS, FIELD_GROUPS, MATCH_KEY_HINTS, MATCH_KEY_LABELS, MatchKey
-
+from core.comparer import ALL_GROUPS, group_label, match_key_hint, match_key_label, MatchKey
+from core.i18n import t
 
 class CompareSetupDialog(QDialog):
     """比較の条件（対象ファイル・突合キー・比較する項目）を選ぶダイアログ。
@@ -19,11 +19,11 @@ class CompareSetupDialog(QDialog):
     ask_target=False のときは対象ファイルの入力欄を出さず、条件だけを変更する（再比較用）。
     """
 
-    def __init__(self, parent=None, *, title: str = "SBOM の比較", base_text: str = "",
+    def __init__(self, parent=None, *, title: str = "", base_text: str = "",
                  ask_target: bool = True, target_text: str = "", start_dir: str = "",
                  mode: MatchKey = MatchKey.AUTO, groups: Optional[Iterable[str]] = None):
         super().__init__(parent)
-        self.setWindowTitle(title)
+        self.setWindowTitle(title or t(...))
         self.setMinimumWidth(560)
         self._ask_target = ask_target
         self._start_dir = start_dir
@@ -35,51 +35,51 @@ class CompareSetupDialog(QDialog):
 
         base_label = QLabel(base_text)
         base_label.setWordWrap(True)
-        form.addRow("基準 (A・旧):", base_label)
+        form.addRow(t("compare.setup.base"), base_label)
 
         self.path_edit = QLineEdit()
         if ask_target:
             row = QHBoxLayout()
-            self.path_edit.setPlaceholderText("比較する SBOM (SPDX JSON) を選択してください")
+            self.path_edit.setPlaceholderText(t("compare.setup.target_placeholder"))
             row.addWidget(self.path_edit, 1)
-            browse = QPushButton("参照...")
+            browse = QPushButton(t("compare.setup.browse"))
             browse.clicked.connect(self._browse)
             row.addWidget(browse)
-            form.addRow("対象 (B・新):", row)
+            form.addRow(t("compare.setup.target"), row)
         elif target_text:
             target_label = QLabel(target_text)
             target_label.setWordWrap(True)
-            form.addRow("対象 (B・新):", target_label)
+            form.addRow(t("compare.setup.target"), target_label)
 
         self.mode_combo = QComboBox()
         for m in MatchKey:
-            self.mode_combo.addItem(MATCH_KEY_LABELS[m], m.value)
+            self.mode_combo.addItem(match_key_label(m), m.value)
         self.mode_combo.setCurrentIndex(max(0, self.mode_combo.findData(MatchKey(mode).value)))
         self.mode_combo.currentIndexChanged.connect(self._update_hint)
-        form.addRow("突合キー:", self.mode_combo)
+        form.addRow(t("compare.setup.match_key"), self.mode_combo)
 
         self.hint_label = QLabel()
         self.hint_label.setWordWrap(True)
-        self.hint_label.setStyleSheet("color: #555555;")
+        self.hint_label.setProperty("role", "muted")
         layout.addWidget(self.hint_label)
 
-        box = QGroupBox("比較する項目")
+        box = QGroupBox(t("compare.setup.fields"))
         box_layout = QVBoxLayout(box)
-        ver = QCheckBox("バージョン（常に比較します）")
+        ver = QCheckBox(t("compare.setup.version_always"))
         ver.setChecked(True)
         ver.setEnabled(False)
         box_layout.addWidget(ver)
         selected = set(groups) if groups is not None else set(ALL_GROUPS)
         for g in ALL_GROUPS:
-            cb = QCheckBox(FIELD_GROUPS[g][0])
+            cb = QCheckBox(group_label(g))
             cb.setChecked(g in selected)
             self._group_boxes[g] = cb
             box_layout.addWidget(cb)
         layout.addWidget(box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("比較する")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("キャンセル")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("compare.setup.ok"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("compare.setup.cancel"))
         buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -89,11 +89,11 @@ class CompareSetupDialog(QDialog):
     # -- 内部 ---------------------------------------------------------------
 
     def _update_hint(self):
-        self.hint_label.setText("ℹ " + MATCH_KEY_HINTS[self.match_mode()])
+        self.hint_label.setText("ℹ " + match_key_hint(self.match_mode()))
 
     def _browse(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "比較する SBOM を選択", self._start_dir, "JSON Files (*.json);;All Files (*)")
+            self, t("compare.setup.browse_title"), self._start_dir, "JSON Files (*.json);;All Files (*)")
         if path:
             self.path_edit.setText(path)
 
@@ -101,7 +101,7 @@ class CompareSetupDialog(QDialog):
         if self._ask_target:
             path = self.path_edit.text().strip().strip('"')
             if not path or not os.path.isfile(path):
-                QMessageBox.warning(self, "比較", "比較する SBOM ファイルを選択してください。")
+                QMessageBox.warning(self, t("compare.setup.warn_title"), t(".warn_select"))
                 return
         self.accept()
 

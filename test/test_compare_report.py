@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import comparer as cmp
 from core.compare_report import detail_html, summary_html
 from test_comparer import pkg, sbom
-
+from core import i18n
+def setUpModule(): i18n.set_language("ja")
 
 class ReportTest(unittest.TestCase):
     def test_html_is_escaped(self):

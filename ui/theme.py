@@ -338,8 +338,12 @@ def _available(families):
     have = set(QFontDatabase.families())
     return [f for f in families if f in have]
 
+_FONT_CHAINS = {
+    "ja": ["Yu Gothic UI", "BIZ UDPGothic", "Meiryo UI", "Segoe UI"],
+    "en": ["Segoe UI", "Yu Gothic UI", "BIZ UDPGothic", "Meiryo UI"],   # 日本語のパッケージ名が出ても崩れないよう後ろに残す
+}
 
-def apply_fonts(app: QApplication, point_size: float = 10.0) -> None:
+def apply_fonts(app, point_size: float = 10.0, lang: str = "ja") -> None:
     """UI フォント。Windows なら Yu Gothic UI → BIZ UDPGothic → Meiryo UI → Segoe UI の順に使う。"""
     font = app.font()
     fams = _available(["Yu Gothic UI", "BIZ UDPGothic", "Meiryo UI", "Segoe UI"])

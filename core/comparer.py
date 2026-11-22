@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 from urllib.parse import unquote
-
+from core.i18n import t
 
 # ---------------------------------------------------------------------------
 # 公開する型
@@ -39,24 +39,6 @@ class MatchKey(str, Enum):
     NAME = "name"                    # 名前が同じもの（version は属性として比較）
     PURL = "purl"                    # purl（version 除く）が同じもの。purl 無しは突合しない
 
-
-MATCH_KEY_LABELS: Dict[MatchKey, str] = {
-    MatchKey.AUTO: "自動（purl → 名前）【推奨】",
-    MatchKey.SPDXID: "SPDXID",
-    MatchKey.NAME_VERSION: "名前 + バージョン",
-    MatchKey.NAME: "名前のみ（バージョンは変更として検出）",
-    MatchKey.PURL: "purl のみ（バージョンは変更として検出）",
-}
-
-MATCH_KEY_HINTS: Dict[MatchKey, str] = {
-    MatchKey.AUTO: "ツールが違う SBOM 同士でも突合できます。バージョンアップは『バージョン変更』になります。",
-    MatchKey.SPDXID: "同じツール・同じ手順で作った SBOM（編集前後など）向けです。ツールが違うと ID 体系が異なり一致しません。",
-    MatchKey.NAME_VERSION: "完全に同じ名前・バージョンだけを同一とみなします。バージョンアップは『削除 + 追加』に見えます。",
-    MatchKey.NAME: "同名で複数バージョンが共存する SBOM では、推測でペアにする場合があります。",
-    MatchKey.PURL: "purl を持たないパッケージは、すべて『追加／削除』になります。",
-}
-
-
 class DiffStatus(str, Enum):
     ADDED = "added"
     REMOVED = "removed"
@@ -64,29 +46,23 @@ class DiffStatus(str, Enum):
     MODIFIED = "modified"
     UNCHANGED = "unchanged"
 
-
-STATUS_LABELS: Dict[DiffStatus, str] = {
-    DiffStatus.ADDED: "追加",
-    DiffStatus.REMOVED: "削除",
-    DiffStatus.VERSION_CHANGED: "バージョン変更",
-    DiffStatus.MODIFIED: "変更",
-    DiffStatus.UNCHANGED: "未変更",
-}
-
 # 要注意フラグ
 FLAG_CHECKSUM_MISMATCH = "checksum_mismatch"   # 同一バージョンなのに checksum が違う（すり替えの可能性）
 FLAG_LICENSE = "license_changed"
 FLAG_SUPPLIER = "supplier_changed"
 FLAG_DOWNLOAD = "download_changed"
 
-FLAG_LABELS: Dict[str, str] = {
-    FLAG_CHECKSUM_MISMATCH: "同一バージョンで checksum 不一致",
-    FLAG_LICENSE: "ライセンス変更",
-    FLAG_SUPPLIER: "供給者変更",
-    FLAG_DOWNLOAD: "取得先変更",
-}
+ALL_FLAGS = (FLAG_CHECKSUM_MISMATCH, FLAG_LICENSE, FLAG_SUPPLIER, FLAG_DOWNLOAD)
 
-VERSION_CHANGE_LABELS = {"upgrade": "アップグレード", "downgrade": "ダウングレード", "changed": "変更"}
+def match_key_label(m) -> str:     return t(f"compare.match.label.{MatchKey(m).value}")
+def match_key_hint(m) -> str:      return t(f"compare.match.hint.{MatchKey(m).value}")
+def status_label(s) -> str:        return t(f"compare.status.{DiffStatus(s).value}")
+def flag_label(flag: str) -> str:  return t(f"compare.flag.{flag}")
+def version_change_label(v: str) -> str:
+    return t(f"compare.version_change.{v}") if v else ""
+def matched_by_label(mid: str) -> str:
+    return t(f"compare.matched.{mid}") if mid else ""
+def group_label(g: str) -> str:    return t(FIELD_GROUPS[g][0])
 
 # 比較する項目のグループ（バージョンは常に比較する）
 FIELD_GROUPS: Dict[str, Tuple[str, Tuple[str, ...]]] = {
@@ -546,7 +522,7 @@ def _diff_pair(a: _Pkg, b: _Pkg, matched_by: str, ambiguous: bool, groups: Seque
         matched_by=matched_by, node_a=a.node, node_b=b.node,
     )
     if ambiguous:
-        d.notes.append("同じ突合キーのパッケージが複数あったため、バージョン→SPDXID→出現順で対応付けました（推測を含みます）。")
+        d.notes.append(t("compare.note.ambiguous"))
 
     for fname in _fields_for(groups, a.props, b.props):
         va, vb = a.props.get(fname), b.props.get(fname)
@@ -666,31 +642,31 @@ def _build_warnings(result: CompareResult, pkgs_a: List[_Pkg], pkgs_b: List[_Pkg
     w: List[str] = []
     va, vb = result.doc_a.spdx_version, result.doc_b.spdx_version
     if va and vb and va != vb:
-        w.append(f"SPDX のバージョンが異なります（{va} / {vb}）。項目の定義差による差分が含まれる可能性があります。")
+        w.append(t("compare.warn.spdx_version", a=va, b=vb))
 
     n_amb = sum(1 for d in result.diffs if d.notes)
     if n_amb:
-        w.append(f"同じ突合キーのパッケージが複数あり、推測で対応付けた組が {n_amb} 件あります（各パッケージの詳細に注記しています）。")
+        w.append(t("compare.warn.ambiguous", n=n_amb))
 
     if mode == MatchKey.SPDXID:
         miss = sum(1 for p in pkgs_a + pkgs_b if not p.spdx_id)
         if miss:
-            w.append(f"SPDXID を持たないパッケージが {miss} 件あり、突合できません。")
+            w.append(t("compare.warn.no_spdxid", n=miss))
     elif mode == MatchKey.PURL:
         miss = sum(1 for p in pkgs_a + pkgs_b if not p.purl_base)
         if miss:
-            w.append(f"purl を持たないパッケージが {miss} 件あり、突合できません（追加／削除として表示します）。")
+            w.append(t("compare.warn.no_purl", n=miss))
     elif mode == MatchKey.AUTO:
-        fb = sum(1 for d in result.diffs if d.matched_by.startswith("名前") and d.status != DiffStatus.ADDED
+        fb = sum(1 for d in result.diffs if d.matched_by == "name_fallback" and d.status != DiffStatus.ADDED
                  and d.status != DiffStatus.REMOVED)
         if fb:
-            w.append(f"purl で突合できず、名前で突合した組が {fb} 件あります。")
+            w.append(t("compare.warn.name_fallback", n=fb))
 
     if mode == MatchKey.SPDXID and result.diffs:
         s = result.summary()
         total = max(s["total_a"], s["total_b"], 1)
         if (s["added"] + s["removed"]) / total > 0.5 and total >= 5:
-            w.append("SPDXID が一致しないパッケージが過半数です。ツールが異なる SBOM の場合は、突合キーを『自動』にしてください。")
+            w.append(t("compare.warn.spdxid_mostly_unmatched"))
     return w
 
 
@@ -707,15 +683,18 @@ def describe_change(fc: FieldChange) -> str:
     if fc.is_list:
         parts = [f"+ {x}" for x in fc.added] + [f"- {x}" for x in fc.removed]
         return f"{fc.field}: " + " / ".join(parts)
-    old = "(なし)" if fc.old is None else fc.old
-    new = "(なし)" if fc.new is None else fc.new
+    old = t("compare.value.none") if fc.old is None else fc.old
+    new = t("compare.value.none") if fc.new is None else fc.new
     return f"{fc.field}: {old} → {new}"
 
 
 def export_csv(result: CompareResult, path: str, include_unchanged: bool = False) -> int:
     """差分を CSV（UTF-8 BOM 付き・Excel 向け）に書き出す。書き出した行数を返す。"""
-    header = ["状態", "パッケージ名", "旧バージョン", "新バージョン", "バージョン変化", "旧SPDXID", "新SPDXID",
-              "突合キー", "突合方法", "要注意", "変更項目", "変更詳細"]
+    header = [t(f"compare.csv.{k}") 
+              for k in ("status","name","old_version","new_version",
+                        "version_change","old_spdxid","new_spdxid","key",
+                        "matched_by","attention","changed_fields","details")]
+    
     rows = 0
     tmp = path + ".tmp"
     with open(tmp, "w", newline="", encoding="utf-8-sig") as f:
@@ -725,9 +704,9 @@ def export_csv(result: CompareResult, path: str, include_unchanged: bool = False
             if d.status == DiffStatus.UNCHANGED and not include_unchanged:
                 continue
             w.writerow([_csv_safe(x) for x in [
-                STATUS_LABELS[d.status], d.name, d.version_a, d.version_b,
-                VERSION_CHANGE_LABELS.get(d.version_change, ""), d.spdx_id_a, d.spdx_id_b,
-                d.key, d.matched_by, " / ".join(FLAG_LABELS[x] for x in d.flags),
+                status_label(d.status), d.name, d.version_a, d.version_b,
+               version_change_label(d.version_change), d.spdx_id_a, d.spdx_id_b,
+                d.key,matched_by_label(d.matched_by), " / ".join(flag_label(x) for x in d.flags),
                 ", ".join(d.changed_fields),
                 " | ".join(describe_change(fc) for fc in d.field_changes),
             ]])

@@ -38,6 +38,8 @@ from ui.compare_dialog import SbomCompareDialog
 from ui.compare_setup_dialog import CompareSetupDialog
 from ui import theme
 from ui.widgets import ISSUE_ROLE, TreeIssueDelegate, strip_leading_emoji
+from core import i18n
+from core.i18n import t
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -151,6 +153,18 @@ class MainWindow(QMainWindow):
         self.act_compare_saved = file_menu.addAction("保存前の変更を確認（ディスク上のファイルと比較）")
         self.act_compare_saved.triggered.connect(self.compare_with_saved_file)
                
+
+        file_menu.addSeparator() # 区切り線
+        lang_menu = file_menu.addMenu(t("menu.language"))
+        lang_group = QActionGroup(self)
+        lang_group.setExclusive(True)
+        current = str(self.settings.value("language", "auto"))
+        for code, label in [("auto", t("menu.language.auto"))] + i18n.available_languages():
+            act = lang_menu.addAction(label)
+            act.setCheckable(True)
+            act.setChecked(current == code)
+            lang_group.addAction(act)
+            act.triggered.connect(lambda _c=False, c=code: self._set_language(c))
 
         file_menu.addSeparator() # 区切り線
 
@@ -280,6 +294,16 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.setMinimumHeight(28)
         self.status_bar.showMessage("Ready")
+
+    def _set_language(self, code: str):
+        if code == str(self.settings.value("language", "auto")):
+            return
+        self.settings.setValue("language", code)
+        new = i18n.normalize_language(code)
+        msgs = dict.fromkeys([i18n.t_in(new, "menu.language.restart_msg"),
+                            i18n.t_in(i18n.current_language(), "menu.language.restart_msg")])
+        QMessageBox.information(self, i18n.t_in(new, "menu.language.restart_title"), "\n\n".join(msgs))
+
 
     def set_validation_menu_enabled(self, enabled: bool):
         """メニューの有効・無効を一括切り替え"""

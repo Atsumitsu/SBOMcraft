@@ -14,6 +14,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Sequence, Tuple
+from core.i18n import t
 
 MAX_FILES = 2
 ALLOWED_EXTENSIONS = (".json",)
@@ -42,21 +43,22 @@ def plan_drop(paths: Sequence[str], has_loaded: bool, busy: bool) -> DropPlan:
     """paths はドロップされたローカルパス（先頭から順に 1 つ目・2 つ目）。ファイルシステムは 2 個以下のときだけ見る。"""
     paths = [p for p in paths if p]
     if busy:
-        return _reject("処理中のためドロップできません。完了してからやり直してください。")
+        return _reject(t("drop.reject.busy"))
     if not paths:
-        return _reject("ファイルをドロップしてください。")
+        return _reject(t("drop.reject.empty"))
     if len(paths) > MAX_FILES:
-        return _reject(f"ドロップできるのは SBOM ファイル 1〜{MAX_FILES} 個です（{len(paths)} 個がドロップされました）。")
+        return _reject(t("drop.reject.too_many", max=MAX_FILES, n=len(paths)))
     if any(os.path.isdir(p) for p in paths):
-        return _reject("フォルダはドロップできません。SPDX JSON ファイルをドロップしてください。")
+        return _reject(t("drop.reject.folder"))
     if any(not p.lower().endswith(ALLOWED_EXTENSIONS) for p in paths):
-        return _reject("ドロップできるのは SPDX JSON（.json）ファイルのみです。")
+        return _reject(t("drop.reject.not_json"))
     if any(not os.path.isfile(p) for p in paths):
-        return _reject("ファイルが見つかりません。")
+        return _reject(t("drop.reject.not_found"))
     if len(paths) == 2 and os.path.normcase(os.path.abspath(paths[0])) == os.path.normcase(os.path.abspath(paths[1])):
-        return _reject("同じファイルが 2 回指定されています。")
+        return _reject(t("drop.reject.same_file"))
 
     paths_t = tuple(paths)
     if len(paths_t) == 1:
         return DropPlan(DropKind.ASK_OPEN_OR_COMPARE if has_loaded else DropKind.OPEN, paths_t)
     return DropPlan(DropKind.CONFIRM_COMPARE_TWO if has_loaded else DropKind.COMPARE_TWO, paths_t)
+

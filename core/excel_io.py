@@ -60,7 +60,12 @@ SHEET_CHECKSUMS = "Checksums"
 SHEET_EXTERNALREFS = "ExternalRefs"
 
 MAX_CELL_CHARS = 32767          # Excel のセル文字数上限
-TOO_LONG_MARKER = "⚠(32767文字超のため未出力・取り込み時は無視されます)"
+TOO_LONG_MARKER = "⚠[TRUNCATED >32767 chars / 32767文字超・未出力]"
+LEGACY_TOO_LONG_MARKERS = ("⚠(32767文字超のため未出力・取り込み時は無視されます)",)
+
+def _is_too_long_marker(v) -> bool:
+    return isinstance(v, str) and (v == TOO_LONG_MARKER or v in LEGACY_TOO_LONG_MARKERS)
+
 _MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024   # zip 爆弾対策
 _MAX_ZIP_ENTRIES = 10_000
 
@@ -860,6 +865,8 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
     """
     notes: Notes = []
 
+    if _is_too_long_marker(raw): return None, None, notes
+
     if isinstance(raw, str) and raw == TOO_LONG_MARKER:
         return None, None, notes
     if is_formula:
@@ -926,6 +933,7 @@ def _row_cell_text(col: FieldSpec, raw: Any) -> str:
     if _is_blank(raw):
         return ""
     text = raw if isinstance(raw, str) else _to_text(col, raw, [])
+    if text in LEGACY_TOO_LONG_MARKERS: text = TOO_LONG_MARKER
     if col.kind == "enum":
         text = _normalize_enum(col, text)
     return _nl(text)

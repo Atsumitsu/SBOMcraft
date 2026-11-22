@@ -11,6 +11,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.drop_plan import DropKind as K, plan_drop
+from core import i18n
+def setUpModule(): i18n.set_language("ja")
 
 
 class DropPlanTest(unittest.TestCase):
