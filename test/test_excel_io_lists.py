@@ -16,6 +16,9 @@ from openpyxl import load_workbook
 
 from core import excel_io as xio
 from test_excel_io import ExcelTestBase, FakeNode, make_pkg
+from core import i18n
+
+def setUpModule(): i18n.set_language("ja")
 
 SHA1 = "a" * 40
 SHA1_B = "d" * 40

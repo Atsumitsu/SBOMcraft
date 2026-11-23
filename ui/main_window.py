@@ -886,9 +886,9 @@ class MainWindow(QMainWindow):
     # Excel 連携（Packages の一括編集）
     # ------------------------------------------------------------------
     def export_packages_to_excel(self):
-        """全 Packages のスカラー項目を Excel(.xlsx) に出力する"""
+        """全 Packages のスカラー項目と checksums / externalRefs を Excel(.xlsx) に出力する"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            QMessageBox.warning(self, "Warning", t("main.warn.load_first"))
             return
         if not self._commit_pending_edit():      # 編集中の内容を先に確定してから出力する
             return
@@ -896,7 +896,7 @@ class MainWindow(QMainWindow):
         base = os.path.splitext(os.path.basename(self.current_file_path))[0] if self.current_file_path else "sbom"
         default = os.path.join(self.last_dir or "", f"{base}.packages.xlsx")
         path, _ = QFileDialog.getSaveFileName(
-            self, "Packages を Excel に出力", default, "Excel Workbook (*.xlsx)"
+            self, t("excel.main.export_title"), default, "Excel Workbook (*.xlsx)"
         )
         if not path:
             return
@@ -914,28 +914,30 @@ class MainWindow(QMainWindow):
                 app_version=VERSION, edit_revision=self._edit_revision,
             )
         except PermissionError:
-            error = "ファイルに書き込めません。Excel で開いている場合は閉じてから再実行してください。"
+            error = t("excel.main.write_denied")
         except Exception as e:
             error = f"{type(e).__name__}: {e}"
         finally:
             QApplication.restoreOverrideCursor()
 
         if error:
-            self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> Excel 出力失敗: {html.escape(error)}</font>")
-            QMessageBox.critical(self, "Excel 出力エラー", error)
+            self.compliance_report.append(
+                f"<br><font color='red'><b>[ERROR]</b> "
+                f"{html.escape(t('excel.main.export_failed_log', error=error))}</font>")
+            QMessageBox.critical(self, t("excel.main.export_error_title"), error)
             return
-        list_info = "".join(f" / {sheet} {n} 要素" for sheet, n in result.list_rows.items())
+        extra = "".join(t("excel.main.export_extra", sheet=sheet, n=n) for sheet, n in result.list_rows.items())
+        done = t("excel.main.export_done", count=result.package_count, columns=result.column_count, extra=extra)
         self.compliance_report.append(
-            f"<br><font color='green'><b>[SUCCESS]</b> Packages を Excel に出力しました "
-            f"({result.package_count} 件 / {result.column_count} 列{list_info})</font><br>"
+            f"<br><font color='green'><b>[SUCCESS]</b> {html.escape(done)}</font><br>"
             f"<font color='gray'>File: {html.escape(path)}</font>"
         )
-        self.status_bar.showMessage(f"Excel に出力しました: {path}")
+        self.status_bar.showMessage(t("excel.main.status_exported", path=path))
 
     def import_packages_from_excel(self):
         """編集済みの Excel を読み込み、差分をプレビューしてから SBOM に反映する"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            QMessageBox.warning(self, "Warning", t("main.warn.load_first"))
             return
         if self._excel_busy:
             return
@@ -943,7 +945,7 @@ class MainWindow(QMainWindow):
             return
 
         path, _ = QFileDialog.getOpenFileName(
-            self, "Excel から Packages を取り込み", self.last_dir, "Excel Workbook (*.xlsx)"
+            self, t("excel.main.import_title"), self.last_dir, "Excel Workbook (*.xlsx)"
         )
         if not path:
             return
@@ -953,11 +955,12 @@ class MainWindow(QMainWindow):
 
         self._excel_busy = True
         self.set_validation_menu_enabled(False)       # 取り込み中は他の操作を止める
-        self.compliance_report.append(f"<br><font color='blue'><b>[INFO]</b> Excel の取り込みを開始しました...</font>")
+        self.compliance_report.append(
+            f"<br><font color='blue'><b>[INFO]</b> {html.escape(t('excel.main.import_started'))}</font>")
         self.compliance_report.append(f"<font color='gray'>File: {html.escape(path)}</font>")
 
-        progress = QProgressDialog("Excel を読み込み・解析しています...", "キャンセル", 0, 100, self)
-        progress.setWindowTitle("Excel 取り込み")
+        progress = QProgressDialog(t("excel.main.progress_label"), t("excel.main.cancel"), 0, 100, self)
+        progress.setWindowTitle(t("excel.main.progress_title"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
@@ -985,6 +988,7 @@ class MainWindow(QMainWindow):
 
         self.excel_thread.start()
 
+
     def _finish_excel_import_ui(self):
         """進捗ダイアログを閉じ、メニューを元に戻す"""
         if self._excel_progress is not None:
@@ -1007,21 +1011,25 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def on_excel_import_error(self, error_msg: str):
         self._finish_excel_import_ui()
-        self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> Excel 取り込み失敗: {html.escape(error_msg)}</font>")
-        self.status_bar.showMessage("Excel の取り込みに失敗しました。")
-        QMessageBox.critical(self, "Excel 取り込みエラー", error_msg)
+        self.compliance_report.append(
+            f"<br><font color='red'><b>[ERROR]</b> "
+            f"{html.escape(t('excel.main.import_failed_log', error=error_msg))}</font>")
+        self.status_bar.showMessage(t("excel.main.status_import_failed"))
+        QMessageBox.critical(self, t("excel.main.import_error_title"), error_msg)
 
     @Slot(object)
     def on_excel_import_finished(self, plan):
         self._finish_excel_import_ui()
         if plan is None:
-            self.compliance_report.append("<font color='gray'>[INFO] Excel の取り込みをキャンセルしました。</font>")
-            self.status_bar.showMessage("Excel の取り込みをキャンセルしました。")
+            self.compliance_report.append(
+                f"<font color='gray'>[INFO] {html.escape(t('excel.main.cancelled_log'))}</font>")
+            self.status_bar.showMessage(t("excel.main.status_cancelled"))
             return
 
         dialog = ExcelImportPreviewDialog(plan, os.path.basename(self._excel_import_path), self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            self.compliance_report.append("<font color='gray'>[INFO] Excel の取り込みを中止しました（SBOMは変更されていません）。</font>")
+            self.compliance_report.append(
+                f"<font color='gray'>[INFO] {html.escape(t('excel.main.aborted_log'))}</font>")
             return
         self._apply_excel_changes(plan, dialog.selected_changes())
 
@@ -1042,25 +1050,22 @@ class MainWindow(QMainWindow):
             self._edit_revision += 1
             self._set_modified(True)
 
-        skipped_errors = plan.error_count
         n_list = sum(1 for c in result.applied if c.kind == "list")
+        applied = t("excel.main.applied_log", items=len(result.applied), packages=len(result.nodes), lists=n_list)
         self.compliance_report.append(
-            f"<br><font color='green'><b>[SUCCESS]</b> Excel から {len(result.applied)} 項目の変更を反映しました "
-            f"({len(result.nodes)} パッケージ / うち checksums・externalRefs の一覧 {n_list} 件)。</font>"
-        )
-        if skipped_errors or plan.warning_count:
-            self.compliance_report.append(
-                f"<font color='gray'>チェック結果: エラー {skipped_errors} 件（該当セルは未反映） / 警告 {plan.warning_count} 件</font>"
-            )
+            f"<br><font color='green'><b>[SUCCESS]</b> {html.escape(applied)}</font>")
+        if plan.error_count or plan.warning_count:
+            check = t("excel.main.check_log", errors=plan.error_count, warnings=plan.warning_count)
+            self.compliance_report.append(f"<font color='gray'>{html.escape(check)}</font>")
         for ch, reason in result.skipped:
             self.compliance_report.append(
-                f"<font color='orange'>[WARN] {html.escape(ch.spdx_id)} / {html.escape(ch.field)}: {html.escape(reason)}</font>"
+                f"<font color='orange'>[WARN] {html.escape(ch.spdx_id)} / {html.escape(ch.field)}: "
+                f"{html.escape(reason)}</font>"
             )
         if result.applied:
             self.compliance_report.append(
-                "<font color='gray'>※ 以前の Validation 結果は古くなっています。必要に応じて再実行してください。</font>"
-            )
-        self.status_bar.showMessage(f"Excel から {len(result.applied)} 項目を反映しました（未保存）")
+                f"<font color='gray'>{html.escape(t('excel.main.stale_validation'))}</font>")
+        self.status_bar.showMessage(t("excel.main.status_applied", items=len(result.applied)))
 
     def _refresh_tree_items(self, nodes):
         """指定ノードに対応するツリー項目の表示名だけを更新する（ツリー全体は再構築しない）"""

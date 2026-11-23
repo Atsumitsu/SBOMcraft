@@ -45,18 +45,35 @@ def _locales_dir() -> str:
     return os.path.join(base, "locales")        # PyInstaller: --add-data "locales;locales"
 
 
+def _catalog_files(lang: str) -> List[str]:
+    """locales/<lang>.json と、機能別に分けた locales/<lang>.<名前>.json（例: ja.excel.json）をすべて返す。"""
+    folder = _locales_dir()
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    return [os.path.join(folder, n) for n in names
+            if n == f"{lang}.json" or (n.startswith(f"{lang}.") and n.endswith(".json"))]
+
+
 def _load(lang: str) -> Dict[str, str]:
     cat = _catalogs.get(lang)
     if cat is None:
-        path = os.path.join(_locales_dir(), f"{lang}.json")
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            cat = {k: v for k, v in data.items() if isinstance(v, str) and not k.startswith("_")}
-        except (OSError, ValueError):
-            cat = {}
+        cat = {}
+        for path in _catalog_files(lang):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (OSError, ValueError):
+                continue
+            cat.update({k: v for k, v in data.items() if isinstance(v, str) and not k.startswith("_")})
         _catalogs[lang] = cat
     return cat
+
+
+def catalog(lang: str) -> Dict[str, str]:
+    """その言語のカタログ全体（テスト用）。"""
+    return dict(_load(lang))
 
 
 def reload_catalogs() -> None:

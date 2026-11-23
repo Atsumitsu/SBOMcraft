@@ -101,7 +101,7 @@ class CompareSetupDialog(QDialog):
         if self._ask_target:
             path = self.path_edit.text().strip().strip('"')
             if not path or not os.path.isfile(path):
-                QMessageBox.warning(self, t("compare.setup.warn_title"), t(".warn_select"))
+                QMessageBox.warning(self, t("compare.setup.warn_title"), t("compare.setup.warn_select"))
                 return
         self.accept()
 

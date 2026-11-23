@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, Signal
 from core.excel_io import (
     ImportCanceled, WorkbookFormatError, build_changes, read_workbook,
 )
+from core.i18n import t
 
 
 class ExcelImportWorker(QObject):
@@ -46,6 +47,6 @@ class ExcelImportWorker(QObject):
         except WorkbookFormatError as e:
             self.error.emit(str(e))
         except PermissionError:
-            self.error.emit("ファイルを開けません。Excel などで開いたままになっていないか確認してください。")
+            self.error.emit(t("excel.err.permission"))
         except Exception as e:                       # 想定外もダイアログで通知できるようにする
             self.error.emit(f"{type(e).__name__}: {e}")

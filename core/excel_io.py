@@ -26,6 +26,14 @@ Phase 2: 入れ子の一覧（checksums / externalRefs）は別シート（Check
   行の削除 = 要素の削除、行の追加 = 要素の追加、値の変更 = 削除 + 追加。
 * 内容が変わっていない要素は元の dict をそのまま残す（Excel に出していないキーも保持される）。
 * 新規・変更された要素だけを検証し、エラーがあればその一覧（パッケージ単位）は反映しない。
+
+多言語化（Phase 3）:
+* Excel ファイルは共有される前提なので、ファイルに書く説明（_meta のガイド・列見出しのコメント・
+  入力規則のメッセージ）は常に『日本語 / English』の併記にする（UI 言語に依存しない）。
+  列見出し（SPDXID, name ...）は SPDX のキー名なので翻訳しない（取り込み時の突合に使う）。
+* 取り込みの結果として画面に出すメッセージ（ImportIssue など）は UI 言語（t()）で出す。
+* 『未出力』マーカーは取り込み時に文字列一致で判定するため、言語に依存しない固定文字列にする。
+  旧バージョンが出力したマーカーも受理する。
 """
 
 from __future__ import annotations
@@ -47,6 +55,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from core.i18n import t, t_in
 from core.serializer import PACKAGE_PRIORITY_KEYS   # 列順は DetailPanel の表示順と共通
 
 # ---------------------------------------------------------------------------
@@ -60,12 +69,10 @@ SHEET_CHECKSUMS = "Checksums"
 SHEET_EXTERNALREFS = "ExternalRefs"
 
 MAX_CELL_CHARS = 32767          # Excel のセル文字数上限
+# 言語に依存しない固定文字列（日英併記）。取り込み時に一致判定するので、安易に変更しないこと。
 TOO_LONG_MARKER = "⚠[TRUNCATED >32767 chars / 32767文字超・未出力]"
-LEGACY_TOO_LONG_MARKERS = ("⚠(32767文字超のため未出力・取り込み時は無視されます)",)
-
-def _is_too_long_marker(v) -> bool:
-    return isinstance(v, str) and (v == TOO_LONG_MARKER or v in LEGACY_TOO_LONG_MARKERS)
-
+# 以前のバージョンが出力したマーカー（取り込み時のみ受理する）
+LEGACY_TOO_LONG_MARKERS: Tuple[str, ...] = ("⚠(32767文字超のため未出力・取り込み時は無視されます)",)
 _MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024   # zip 爆弾対策
 _MAX_ZIP_ENTRIES = 10_000
 
@@ -87,6 +94,10 @@ NON_SCALAR_KEYS = frozenset({
 })
 
 
+def _is_too_long_marker(value: Any) -> bool:
+    return isinstance(value, str) and (value == TOO_LONG_MARKER or value in LEGACY_TOO_LONG_MARKERS)
+
+
 @dataclass(frozen=True)
 class FieldSpec:
     key: str
@@ -97,37 +108,33 @@ class FieldSpec:
     extra_choices: Tuple[str, ...] = ()   # 入力は受け付けるが、プルダウンには出さない（旧表記など）
     suggestions: Tuple[str, ...] = ()     # プルダウン候補（候補以外も入力可）
     width: int = 24
-    help: str = ""
+    help: str = ""                        # メッセージカタログのキー（例: "excel.help.name"）。出力時に日英併記にする
 
 
 # 列の並び順 = このリストの順（未知のスカラーキーは末尾にアルファベット順で追加）
 PACKAGE_FIELD_SPECS: List[FieldSpec] = [
-    FieldSpec("SPDXID", readonly=True, width=34,
-              help="行の識別キーです。変更しないでください（並べ替え・フィルタは可）。"),
-    FieldSpec("name", required=True, width=28, help="パッケージ名（必須）。"),
-    FieldSpec("versionInfo", width=14, help="バージョン。"),
-    FieldSpec("supplier", width=30,
-              help="供給者。'Organization: 名前' / 'Person: 名前' / NOASSERTION。"),
-    FieldSpec("originator", width=30,
-              help="作成者。'Organization: 名前' / 'Person: 名前' / NOASSERTION。"),
-    FieldSpec("downloadLocation", required=True, width=36,
-              help="取得先 URL（必須）。不明な場合は NOASSERTION、無い場合は NONE。"),
-    FieldSpec("filesAnalyzed", kind="bool", width=14, help="true または false。"),
-    FieldSpec("licenseConcluded", width=26, help="SPDX ライセンス式。不明なら NOASSERTION。"),
-    FieldSpec("licenseDeclared", width=26, help="SPDX ライセンス式。不明なら NOASSERTION。"),
-    FieldSpec("packageFileName", width=24, help="パッケージのファイル名。"),
-    FieldSpec("homepage", width=34, help="ホームページ URL。"),
-    FieldSpec("copyrightText", width=36, help="著作権表示。不明なら NOASSERTION。"),
-    FieldSpec("summary", width=40, help="概要。"),
-    FieldSpec("description", width=50, help="説明。"),
-    FieldSpec("comment", width=36, help="コメント。"),
-    FieldSpec("sourceInfo", width=30, help="ソース情報。"),
-    FieldSpec("licenseComments", width=30, help="ライセンスに関するコメント。"),
+    FieldSpec("SPDXID", readonly=True, width=34, help="excel.help.spdxid"),
+    FieldSpec("name", required=True, width=28, help="excel.help.name"),
+    FieldSpec("versionInfo", width=14, help="excel.help.version"),
+    FieldSpec("supplier", width=30, help="excel.help.supplier"),
+    FieldSpec("originator", width=30, help="excel.help.originator"),
+    FieldSpec("downloadLocation", required=True, width=36, help="excel.help.download"),
+    FieldSpec("filesAnalyzed", kind="bool", width=14, help="excel.help.files_analyzed"),
+    FieldSpec("licenseConcluded", width=26, help="excel.help.license"),
+    FieldSpec("licenseDeclared", width=26, help="excel.help.license"),
+    FieldSpec("packageFileName", width=24, help="excel.help.package_file_name"),
+    FieldSpec("homepage", width=34, help="excel.help.homepage"),
+    FieldSpec("copyrightText", width=36, help="excel.help.copyright"),
+    FieldSpec("summary", width=40, help="excel.help.summary"),
+    FieldSpec("description", width=50, help="excel.help.description"),
+    FieldSpec("comment", width=36, help="excel.help.comment"),
+    FieldSpec("sourceInfo", width=30, help="excel.help.source_info"),
+    FieldSpec("licenseComments", width=30, help="excel.help.license_comments"),
     FieldSpec("primaryPackagePurpose", kind="enum", choices=PRIMARY_PACKAGE_PURPOSES,
-              width=24, help="用途。リストから選択。"),
-    FieldSpec("releaseDate", kind="date", width=22, help="YYYY-MM-DDThh:mm:ssZ 形式。"),
-    FieldSpec("builtDate", kind="date", width=22, help="YYYY-MM-DDThh:mm:ssZ 形式。"),
-    FieldSpec("validUntilDate", kind="date", width=22, help="YYYY-MM-DDThh:mm:ssZ 形式。"),
+              width=24, help="excel.help.purpose"),
+    FieldSpec("releaseDate", kind="date", width=22, help="excel.help.date"),
+    FieldSpec("builtDate", kind="date", width=22, help="excel.help.date"),
+    FieldSpec("validUntilDate", kind="date", width=22, help="excel.help.date"),
 ]
 # 列順は『PACKAGE_PRIORITY_KEYS の順 → 残りの既知キー（上のリスト順）』に揃える
 PACKAGE_FIELD_SPECS.sort(key=lambda sp: (PACKAGE_PRIORITY_KEYS.index(sp.key)
@@ -170,19 +177,16 @@ class ListSheetSpec:
 
 CHECKSUM_SHEET_SPEC = ListSheetSpec(SHEET_CHECKSUMS, "checksums", (
     FieldSpec("algorithm", kind="enum", required=True, choices=CHECKSUM_ALGORITHMS, width=16,
-              help="ハッシュアルゴリズム（リストから選択）。"),
-    FieldSpec("checksumValue", required=True, width=72,
-              help="16進数のハッシュ値。SHA256 は 64 桁、SHA1 は 40 桁、MD5 は 32 桁。"),
+              help="excel.help.algorithm"),
+    FieldSpec("checksumValue", required=True, width=72, help="excel.help.checksum_value"),
 ))
 EXTERNALREFS_SHEET_SPEC = ListSheetSpec(SHEET_EXTERNALREFS, "externalRefs", (
     FieldSpec("referenceCategory", kind="enum", required=True, choices=REFERENCE_CATEGORIES,
-              extra_choices=LEGACY_REFERENCE_CATEGORIES, width=20,
-              help="SECURITY / PACKAGE-MANAGER / PERSISTENT-ID / OTHER。"),
+              extra_choices=LEGACY_REFERENCE_CATEGORIES, width=20, help="excel.help.ref_category"),
     FieldSpec("referenceType", required=True, width=18, suggestions=tuple(KNOWN_REFERENCE_TYPES),
-              help="例: purl, cpe23Type, advisory, npm, maven-central ..."),
-    FieldSpec("referenceLocator", required=True, width=60,
-              help="例: pkg:pypi/requests@2.32.0（purl は 'pkg:' で始まる）。"),
-    FieldSpec("comment", width=36, help="コメント（任意）。"),
+              help="excel.help.ref_type"),
+    FieldSpec("referenceLocator", required=True, width=60, help="excel.help.ref_locator"),
+    FieldSpec("comment", width=36, help="excel.help.list_comment"),
 ))
 LIST_SHEET_SPECS: Tuple[ListSheetSpec, ...] = (CHECKSUM_SHEET_SPEC, EXTERNALREFS_SHEET_SPEC)
 
@@ -289,6 +293,13 @@ class ExportResult:
 # 共通ヘルパー
 # ---------------------------------------------------------------------------
 
+def _bi(key: str, sep: str = " / ", **params) -> str:
+    """UI 言語に関係なく『日本語 / English』の 2 言語併記にする（Excel ファイルは共有されるため）。
+    日英で同じ文字列（SECURITY / PACKAGE-MANAGER ... など）のときは 1 つだけ返す。"""
+    ja, en = t_in("ja", key, **params), t_in("en", key, **params)
+    return ja if ja == en else f"{ja}{sep}{en}"
+
+
 def iter_package_nodes(root_node) -> Iterator[Any]:
     """ツリーから package ノードを元の順序で列挙する（serializer と同じ走査）。"""
     if root_node is None:
@@ -340,8 +351,7 @@ def collect_columns(pkg_nodes: Iterable[Any]) -> List[FieldSpec]:
             extra[key] = _kind_from_value(val)
     cols = list(PACKAGE_FIELD_SPECS)
     for key in sorted(extra):
-        cols.append(FieldSpec(key, kind=extra[key], width=24,
-                              help="（このSBOM固有の項目）"))
+        cols.append(FieldSpec(key, kind=extra[key], width=24, help="excel.help.custom"))
     return cols
 
 
@@ -372,6 +382,16 @@ def _text_cell(ws, text: Optional[str], *, font=_FONT, fill=None, align=_ALIGN_T
     return c
 
 
+def _head_cell(ws, spec: FieldSpec) -> WriteOnlyCell:
+    """見出しセル。見出し文字列は SPDX のキー名（翻訳しない）。説明はコメントに日英併記で付ける。"""
+    c = _text_cell(ws, spec.key, font=_FONT_HEAD, fill=_FILL_HEAD_RO if spec.readonly else _FILL_HEAD)
+    if spec.help:
+        cm = Comment(_bi(spec.help, sep="\n"), "SBOMcraft")
+        cm.width, cm.height = 320, 110
+        c.comment = cm
+    return c
+
+
 def _cell_text_for(props: Dict[str, Any], key: str) -> Optional[str]:
     if key not in props:
         return None
@@ -386,31 +406,24 @@ def _cell_text_for(props: Dict[str, Any], key: str) -> Optional[str]:
     return text
 
 
-_GUIDE_LINES = [
-    "1. 編集するのは Packages / Checksums / ExternalRefs の各シートです。SPDXID 列（灰色）は行の識別キーなので変更しないでください（並べ替え・フィルタは可能です）。",
-    "2. 列の並べ替えや不要な列の削除は可能です。1行目の見出しは変更しないでください。見出しが無い項目は変更されません。",
-    "3. 【Packages】セルを空にすると、その項目は SBOM から削除されます。ただし name と downloadLocation は必須です（不明な場合は NOASSERTION）。",
-    "4. 【Packages】行の追加・削除は反映されません。SBOM に無い SPDXID の行は無視され、Excel から消した行も SBOM からは削除されません。",
-    "5. 全セルをテキスト書式にしています。数値・日付として貼り付けると元の表記（例: 1.10 → 1.1）が変わることがあります。",
-    "6. 【Checksums / ExternalRefs】1 要素 = 1 行です。同じ SPDXID の行が、そのパッケージの一覧になります。name 列は参考表示で、変更しても無視されます。",
-    "7. 【同上】要素を追加するには、同じ SPDXID の行を追加（コピー）して入力します。要素が無いパッケージには、入力用の空行を用意しています。",
-    "8. 【同上】行を削除すると、その要素が SBOM から削除されます。ただし、あるパッケージの行をすべて削除した場合は『変更なし』として扱います。",
-    "    一覧を空にしたいときは、そのパッケージの行を 1 行だけ残し、値をすべて空にしてください。",
-    "9. 【同上】値を変えた要素は『削除 + 追加』として扱われます（追加された要素は一覧の末尾に付きます）。並べ替えは反映されません。",
-    "10. 取り込み時は、新規・変更された要素だけを検証します（algorithm の種類、ハッシュの桁数と16進数、purl の接頭辞など）。エラーのある一覧は、パッケージ単位で反映されません。",
-    "11. SBOMcraft で取り込むと、反映前に変更点の一覧（プレビュー）を確認できます。",
-]
+# ガイドの行 ID（"8b" は 8 の続きの行）
+_GUIDE_IDS = ("1", "2", "3", "4", "5", "6", "7", "8", "8b", "9", "10", "11")
 
+# (項目, 例, 備考)。備考が '@' で始まるときはメッセージカタログのキー（日英併記にする）、それ以外はそのまま出す。
 _FORMAT_EXAMPLES = [
     ("supplier / originator", "Organization: Example Corp", "Person: Taro Yamada (taro@example.com) / NOASSERTION"),
-    ("filesAnalyzed", "true", "true または false"),
-    ("licenseConcluded / licenseDeclared", "Apache-2.0 AND MIT", "SPDX ライセンス式 / NOASSERTION / NONE"),
+    ("filesAnalyzed", "true", "@excel.example.note.bool"),
+    ("licenseConcluded / licenseDeclared", "Apache-2.0 AND MIT", "@excel.example.note.license"),
     ("primaryPackagePurpose", "LIBRARY", "APPLICATION, FRAMEWORK, LIBRARY, CONTAINER, OPERATING-SYSTEM, ..."),
-    ("releaseDate / builtDate", "2026-01-31T00:00:00Z", "YYYY-MM-DDThh:mm:ssZ（UTC）"),
-    ("algorithm / checksumValue", "SHA256 / e3b0c44298fc1c14...（64桁）", "ハッシュは16進数。SHA1=40桁 / SHA256=64桁 / SHA512=128桁 / MD5=32桁"),
+    ("releaseDate / builtDate", "2026-01-31T00:00:00Z", "YYYY-MM-DDThh:mm:ssZ (UTC)"),
+    ("algorithm / checksumValue", "SHA256 / e3b0c44298fc1c14... (64 digits)", "@excel.example.note.hash"),
     ("referenceCategory / referenceType", "PACKAGE-MANAGER / purl", "SECURITY, PACKAGE-MANAGER, PERSISTENT-ID, OTHER"),
-    ("referenceLocator", "pkg:pypi/requests@2.32.0", "purl は pkg: 、cpe23Type は cpe:2.3: で始まる"),
+    ("referenceLocator", "pkg:pypi/requests@2.32.0", "@excel.example.note.locator"),
 ]
+
+
+def _example_note(note: str) -> str:
+    return _bi(note[1:]) if note.startswith("@") else note
 
 
 def _write_meta_sheet(ws, nodes: List[Any], root_node, app_version: str, edit_revision: int) -> None:
@@ -430,22 +443,24 @@ def _write_meta_sheet(ws, nodes: List[Any], root_node, app_version: str, edit_re
         "editRevision": str(int(edit_revision)),
     }
 
-    ws.append([_text_cell(ws, "SBOMcraft Packages エクスポート", font=_FONT_TITLE)])
+    ws.append([_text_cell(ws, _bi("excel.meta.title"), font=_FONT_TITLE)])
     ws.append([])
     for key in META_KEYS:
         ws.append([_text_cell(ws, key, font=_FONT_BOLD, fill=_FILL_RO),
                    _text_cell(ws, _export_text(meta_values[key]) or None)])
     ws.append([])
-    ws.append([_text_cell(ws, "編集ガイド", font=_FONT_BOLD)])
-    for line in _GUIDE_LINES:
-        ws.append([_text_cell(ws, line)])
+    ws.append([_text_cell(ws, _bi("excel.meta.guide_heading"), font=_FONT_BOLD)])
+    for lang, label in (("ja", "【日本語】"), ("en", "[English]")):     # 日本語ブロック → 英語ブロック
+        ws.append([_text_cell(ws, label, font=_FONT_BOLD)])
+        for gid in _GUIDE_IDS:
+            ws.append([_text_cell(ws, t_in(lang, f"excel.guide.{gid}"))])
     ws.append([])
-    ws.append([_text_cell(ws, "入力形式の例", font=_FONT_BOLD)])
-    ws.append([_text_cell(ws, "項目", font=_FONT_HEAD, fill=_FILL_HEAD),
-               _text_cell(ws, "例", font=_FONT_HEAD, fill=_FILL_HEAD),
-               _text_cell(ws, "備考", font=_FONT_HEAD, fill=_FILL_HEAD)])
+    ws.append([_text_cell(ws, _bi("excel.meta.examples_heading"), font=_FONT_BOLD)])
+    ws.append([_text_cell(ws, _bi("excel.meta.col_field"), font=_FONT_HEAD, fill=_FILL_HEAD),
+               _text_cell(ws, _bi("excel.meta.col_example"), font=_FONT_HEAD, fill=_FILL_HEAD),
+               _text_cell(ws, _bi("excel.meta.col_note"), font=_FONT_HEAD, fill=_FILL_HEAD)])
     for name, example, note in _FORMAT_EXAMPLES:
-        ws.append([_text_cell(ws, name), _text_cell(ws, example), _text_cell(ws, note)])
+        ws.append([_text_cell(ws, name), _text_cell(ws, example), _text_cell(ws, _example_note(note))])
 
 
 def _write_packages_sheet(ws, nodes: List[Any], columns: List[FieldSpec]) -> None:
@@ -456,16 +471,7 @@ def _write_packages_sheet(ws, nodes: List[Any], columns: List[FieldSpec]) -> Non
         dim.width = spec.width
         dim.number_format = "@"        # 後から入力したセルもテキスト扱いにする
 
-    header = []
-    for spec in columns:
-        c = _text_cell(ws, spec.key, font=_FONT_HEAD,
-                       fill=_FILL_HEAD_RO if spec.readonly else _FILL_HEAD)
-        if spec.help:
-            cm = Comment(spec.help, "SBOMcraft")
-            cm.width, cm.height = 280, 80
-            c.comment = cm
-        header.append(c)
-    ws.append(header)
+    ws.append([_head_cell(ws, spec) for spec in columns])
 
     for node in nodes:
         props = node.properties
@@ -493,17 +499,19 @@ _DV_EXTRA_ROWS = 1000     # 一覧シートは行を追加できるので、入�
 
 
 def _add_list_validation(ws, letter: str, items, last_row: int, *, strict: bool, label: str) -> None:
-    """プルダウン（リスト形式の入力規則）。strict=False は候補以外の入力も許可する。"""
+    """プルダウン（リスト形式の入力規則）。strict=False は候補以外の入力も許可する。
+    エラーメッセージはファイルに残るので日英併記。Excel の上限（タイトル 32 文字・本文 255 文字）に収める。"""
     formula = '"' + ",".join(items) + '"'
     if len(formula) > 255:                      # Excel の上限。超えるとファイルが壊れる
         return
-    msg = f"{label} は次の値から選択してください: " + ", ".join(items)
+    msg = _bi("excel.dv.choose", label=label) + ": " + ", ".join(items)
     if not strict:
-        msg += "（他の値も入力できます）"
+        msg += " " + _bi("excel.dv.free")
+    title = _bi("excel.dv.title_error" if strict else "excel.dv.title_confirm")
     dv = DataValidation(type="list", formula1=formula, allow_blank=True, showErrorMessage=True,
                         errorStyle="stop" if strict else "information",
-                        errorTitle="入力エラー" if strict else "入力の確認",
-                        error=msg[:255])        # エラーメッセージも 255 文字が上限
+                        errorTitle=title[:32],
+                        error=msg[:255])
     dv.add(f"{letter}2:{letter}{last_row}")
     ws.data_validations.append(dv)              # WriteOnlyWorksheet に add_data_validation は無い
 
@@ -520,10 +528,8 @@ def _list_entries_or_none(node, list_key: str) -> Optional[List[Dict[str, Any]]]
 
 def _list_sheet_columns(spec: ListSheetSpec) -> List[FieldSpec]:
     return [
-        FieldSpec("SPDXID", readonly=True, width=34,
-                  help="行の識別キーです。変更しないでください（並べ替え・フィルタは可）。"),
-        FieldSpec("name", readonly=True, width=28,
-                  help="参考用のパッケージ名です。変更しても無視されます。"),
+        FieldSpec("SPDXID", readonly=True, width=34, help="excel.help.spdxid"),
+        FieldSpec("name", readonly=True, width=28, help="excel.help.list_name"),
     ] + list(spec.columns)
 
 
@@ -536,15 +542,7 @@ def _write_list_sheet(ws, nodes: List[Any], spec: ListSheetSpec) -> int:
         dim.width = col.width
         dim.number_format = "@"
 
-    header = []
-    for col in columns:
-        c = _text_cell(ws, col.key, font=_FONT_HEAD, fill=_FILL_HEAD_RO if col.readonly else _FILL_HEAD)
-        if col.help:
-            cm = Comment(col.help, "SBOMcraft")
-            cm.width, cm.height = 280, 80
-            c.comment = cm
-        header.append(c)
-    ws.append(header)
+    ws.append([_head_cell(ws, col) for col in columns])
 
     entry_count = 0
     last_row = 1
@@ -618,13 +616,13 @@ def export_packages(root_node, path: str, *, app_version: str = "",
 
 def _check_zip_safety(path: str) -> None:
     if not zipfile.is_zipfile(path):
-        raise WorkbookFormatError("Excel(.xlsx) ファイルではありません（ファイルが壊れているか、形式が異なります）。")
+        raise WorkbookFormatError(t("excel.err.not_xlsx"))
     with zipfile.ZipFile(path) as zf:
         infos = zf.infolist()
         if len(infos) > _MAX_ZIP_ENTRIES:
-            raise WorkbookFormatError("Excel ファイルの内部構造が異常です（エントリ数が多すぎます）。")
+            raise WorkbookFormatError(t("excel.err.zip_entries"))
         if sum(i.file_size for i in infos) > _MAX_UNCOMPRESSED_BYTES:
-            raise WorkbookFormatError("Excel ファイルが大きすぎます（展開後 500MB 超）。")
+            raise WorkbookFormatError(t("excel.err.zip_size"))
 
 
 def read_workbook(path: str) -> ParsedWorkbook:
@@ -634,9 +632,7 @@ def read_workbook(path: str) -> ParsedWorkbook:
     """
     ext = os.path.splitext(path)[1].lower()
     if ext != ".xlsx":
-        raise WorkbookFormatError(
-            f"対応しているのは .xlsx のみです（{ext or '拡張子なし'}）。"
-            "マクロ有効ブック(.xlsm)・旧形式(.xls)・CSV は読み込めません。")
+        raise WorkbookFormatError(t("excel.err.extension", ext=ext or t("excel.err.no_extension")))
     _check_zip_safety(path)
 
     wb_vals = wb_forms = None
@@ -645,11 +641,10 @@ def read_workbook(path: str) -> ParsedWorkbook:
             wb_vals = load_workbook(path, read_only=True, data_only=True, keep_links=False)
             wb_forms = load_workbook(path, read_only=True, data_only=False, keep_links=False)
         except Exception as e:                         # openpyxl は多様な例外を投げる
-            raise WorkbookFormatError(f"Excel ファイルを開けません: {e}") from e
+            raise WorkbookFormatError(t("excel.err.open", error=e)) from e
 
         if SHEET_PACKAGES not in wb_vals.sheetnames:
-            raise WorkbookFormatError(
-                f"'{SHEET_PACKAGES}' シートが見つかりません。SBOMcraft が出力した Excel を使ってください。")
+            raise WorkbookFormatError(t("excel.err.no_packages_sheet", sheet=SHEET_PACKAGES))
 
         meta = _read_meta(wb_vals[SHEET_META]) if SHEET_META in wb_vals.sheetnames else {}
         packages = _read_table(wb_vals[SHEET_PACKAGES], wb_forms[SHEET_PACKAGES], SHEET_PACKAGES)
@@ -704,7 +699,7 @@ def _read_table(ws_vals, ws_forms, title: str) -> ParsedTable:
     try:
         first = next(rows_iter)
     except StopIteration:
-        raise WorkbookFormatError(f"'{title}' シートが空です。") from None
+        raise WorkbookFormatError(t("excel.err.sheet_empty", sheet=title)) from None
 
     headers: Dict[str, int] = {}
     dups: List[str] = []
@@ -716,7 +711,7 @@ def _read_table(ws_vals, ws_forms, title: str) -> ParsedTable:
             else:
                 headers[name] = idx
     if "SPDXID" not in headers:
-        raise WorkbookFormatError(f"'{title}' シートの1行目に 'SPDXID' 列がありません。1行目の見出しを変更していないか確認してください。")
+        raise WorkbookFormatError(t("excel.err.no_spdxid_header", sheet=title))
 
     rows: List[RowData] = []
     for row_no, values in enumerate(rows_iter, start=2):
@@ -747,12 +742,12 @@ def _parse_bool(raw: Any) -> bool:
         low = raw.strip().lower()
         if low in ("true", "false"):
             return low == "true"
-    raise ValueError(f"真偽値は true または false で入力してください: {raw!r}")
+    raise ValueError(t("excel.parse.bool", value=repr(raw)))
 
 
 def _parse_int(raw: Any) -> int:
     if isinstance(raw, bool):
-        raise ValueError(f"整数で入力してください: {raw!r}")
+        raise ValueError(t("excel.parse.int", value=repr(raw)))
     if isinstance(raw, int):
         return raw
     if isinstance(raw, float) and raw.is_integer():
@@ -762,12 +757,12 @@ def _parse_int(raw: Any) -> int:
             return int(raw.strip())
         except ValueError:
             pass
-    raise ValueError(f"整数で入力してください: {raw!r}")
+    raise ValueError(t("excel.parse.int", value=repr(raw)))
 
 
 def _parse_float(raw: Any) -> float:
     if isinstance(raw, bool):
-        raise ValueError(f"数値で入力してください: {raw!r}")
+        raise ValueError(t("excel.parse.float", value=repr(raw)))
     if isinstance(raw, (int, float)):
         return float(raw)
     if isinstance(raw, str):
@@ -775,7 +770,7 @@ def _parse_float(raw: Any) -> float:
             return float(raw.strip())
         except ValueError:
             pass
-    raise ValueError(f"数値で入力してください: {raw!r}")
+    raise ValueError(t("excel.parse.float", value=repr(raw)))
 
 
 def _number_to_text(n: Any) -> str:
@@ -790,22 +785,22 @@ def _to_text(spec: FieldSpec, raw: Any, notes: Notes) -> str:
         return raw
     if isinstance(raw, _dt.datetime):
         text = raw.strftime(_DATE_FMT) if spec.kind == "date" else raw.isoformat()
-        notes.append(("warning", f"日付として読み込まれました（{text}）。意図した表記か確認してください。"))
+        notes.append(("warning", t("excel.note.as_date", text=text)))
         return text
     if isinstance(raw, _dt.date):
         text = raw.strftime("%Y-%m-%dT00:00:00Z") if spec.kind == "date" else raw.isoformat()
-        notes.append(("warning", f"日付として読み込まれました（{text}）。意図した表記か確認してください。"))
+        notes.append(("warning", t("excel.note.as_date", text=text)))
         return text
     if isinstance(raw, bool):
         text = "true" if raw else "false"
-        notes.append(("warning", f"真偽値として読み込まれました（{text}）。"))
+        notes.append(("warning", t("excel.note.as_bool", text=text)))
         return text
     if isinstance(raw, (int, float)):
         text = _number_to_text(raw)
-        notes.append(("warning", f"数値として読み込まれました（{text}）。先頭/末尾のゼロ（例: 1.10）が失われている可能性があります。"))
+        notes.append(("warning", t("excel.note.as_number", text=text)))
         return text
     text = str(raw)
-    notes.append(("warning", f"想定外の型({type(raw).__name__})のセルを文字列として扱いました: {text!r}"))
+    notes.append(("warning", t("excel.note.unexpected_type", type=type(raw).__name__, text=repr(text))))
     return text
 
 
@@ -819,10 +814,10 @@ def _convert(spec: FieldSpec, raw: Any, notes: Notes) -> Any:
         return _parse_float(raw)
     text = _to_text(spec, raw, notes)
     if kind == "enum":
-        t = text.strip()
-        if t not in spec.choices and t.upper() in spec.choices:
-            t = t.upper()
-        return t
+        stripped = text.strip()
+        if stripped not in spec.choices and stripped.upper() in spec.choices:
+            stripped = stripped.upper()
+        return stripped
     if kind == "date":
         return text.strip()
     return text
@@ -844,16 +839,16 @@ def _validate_changed(spec: FieldSpec, new: Any, notes: Notes) -> bool:
     """変更されたセルだけを検証する。error があれば False（その変更は適用しない）。"""
     ok = True
     if spec.kind == "enum" and new not in spec.choices:
-        notes.append(("error", f"{spec.key} は次のいずれかで入力してください: {', '.join(spec.choices)}（入力: {new!r}）"))
+        notes.append(("error", t("excel.val.enum", field_key=spec.key, choices=", ".join(spec.choices), input=repr(new))))
         ok = False
     if spec.kind == "date" and not _DATE_RE.match(str(new)):
-        notes.append(("error", f"{spec.key} は YYYY-MM-DDThh:mm:ssZ 形式で入力してください（入力: {new!r}）"))
+        notes.append(("error", t("excel.val.date", field_key=spec.key, input=repr(new))))
         ok = False
     if spec.key in ("supplier", "originator") and isinstance(new, str):
         if new != "NOASSERTION" and not _AGENT_RE.match(new):
-            notes.append(("warning", f"{spec.key} は 'Person: 名前' / 'Organization: 名前' / NOASSERTION の形式が推奨です（入力: {new!r}）"))
+            notes.append(("warning", t("excel.val.agent", field_key=spec.key, input=repr(new))))
     if isinstance(new, str) and new != new.strip():
-        notes.append(("warning", "値の前後に空白が含まれています。"))
+        notes.append(("warning", t("excel.note.whitespace")))
     return ok
 
 
@@ -865,15 +860,14 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
     """
     notes: Notes = []
 
-    if _is_too_long_marker(raw): return None, None, notes
-
-    if isinstance(raw, str) and raw == TOO_LONG_MARKER:
+    # ▼ ここでレガシーマーカーや未出力マーカーを確実に弾くようにする
+    if _is_too_long_marker(raw) or _is_too_long_marker(raw):  # ←もしレガシーマーカー判定関数があればここに追加、またはまとめる
         return None, None, notes
     if is_formula:
         if raw is None:
-            notes.append(("error", "数式セルで計算結果が保存されていません（Excel で開いて保存し直すか、値として貼り付けてください）。"))
+            notes.append(("error", t("excel.note.formula_uncached")))
             return None, None, notes
-        notes.append(("warning", "数式セルです。保存されている計算結果を使用します。"))
+        notes.append(("warning", t("excel.note.formula_cached")))
 
     old_text = _export_text(old) if old_present else None
 
@@ -885,7 +879,7 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
         if old_text in (None, ""):
             return None, None, []
         if spec.required:
-            notes.append(("error", f"{spec.key} は必須項目のため空にできません（不明な場合は NOASSERTION）。"))
+            notes.append(("error", t("excel.note.required_blank", field_key=spec.key)))
             return None, None, notes
         return "delete", None, notes
 
@@ -909,31 +903,33 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
 
 def _normalize_enum(col: FieldSpec, text: str) -> str:
     """列挙値は大文字小文字・前後の空白を無視して正規の表記に揃える（該当なしならそのまま）。"""
-    t = text.strip()
-    if not t:
+    stripped = text.strip()
+    if not stripped:
         return text
     pool = {c.upper(): c for c in (*col.choices, *col.extra_choices)}
-    return pool.get(t.upper(), text)
+    return pool.get(stripped.upper(), text)
 
 
 def _entry_canon(entry: Dict[str, Any], cols: List[FieldSpec]) -> Tuple[str, ...]:
     """既存の 1 要素を、Excel の 1 行と比較できる正規形（列ごとのテキストのタプル）にする。"""
     out = []
     for col in cols:
-        t = _cell_text_for(entry, col.key)
-        t = "" if t is None else _nl(t)
+        txt = _cell_text_for(entry, col.key)
+        txt = "" if txt is None else _nl(txt)
         if col.kind == "enum":
-            t = _normalize_enum(col, t)
-        out.append(t)
+            txt = _normalize_enum(col, txt)
+        out.append(txt)
     return tuple(out)
 
 
 def _row_cell_text(col: FieldSpec, raw: Any) -> str:
-    """Excel のセル → 比較用テキスト（空は ''）。型変換の警告はここでは出さない（追加行だけ別途出す）。"""
+    """Excel のセル → 比較用テキスト（空は ''）。型変換の警告はここでは出さない（追加行だけ別途出す）。
+    旧バージョンの『未出力』マーカーは、現在のマーカーに揃える。"""
     if _is_blank(raw):
         return ""
     text = raw if isinstance(raw, str) else _to_text(col, raw, [])
-    if text in LEGACY_TOO_LONG_MARKERS: text = TOO_LONG_MARKER
+    if text in LEGACY_TOO_LONG_MARKERS:
+        return TOO_LONG_MARKER
     if col.kind == "enum":
         text = _normalize_enum(col, text)
     return _nl(text)
@@ -951,11 +947,11 @@ def _validate_added_entry(spec: ListSheetSpec, cols: List[FieldSpec], headers: D
         text = texts[col.key]
         raw = rd.values.get(col.key)
         if text == TOO_LONG_MARKER:
-            add("error", col.key, "『未出力』マーカーのセルは要素として追加できません。")
+            add("error", col.key, t("excel.list.marker_cannot_add"))
             continue
         if text == "":
             if col.required:
-                add("error", col.key, "必須項目です。")
+                add("error", col.key, t("excel.list.required"))
             continue
         if not isinstance(raw, str):
             notes: Notes = []
@@ -963,32 +959,33 @@ def _validate_added_entry(spec: ListSheetSpec, cols: List[FieldSpec], headers: D
             for level, msg in notes:
                 add(level, col.key, msg)
         if col.key in rd.formula_cols:
-            add("warning", col.key, "数式セルです。保存されている計算結果を使用します。")
+            add("warning", col.key, t("excel.note.formula_cached"))
         if text != text.strip():
-            add("warning", col.key, "値の前後に空白が含まれています。")
+            add("warning", col.key, t("excel.note.whitespace"))
         if col.kind == "enum":
             if text in col.extra_choices:
-                add("warning", col.key, f"'{text}' は旧表記です（推奨: {text.replace('_', '-')}）。")
+                add("warning", col.key, t("excel.list.legacy_category", text=text, recommended=text.replace("_", "-")))
             elif text not in col.choices:
-                add("error", col.key, f"次のいずれかで入力してください: {', '.join(col.choices)}（入力: {text!r}）")
+                add("error", col.key, t("excel.list.enum", choices=", ".join(col.choices), input=repr(text)))
 
     if spec.list_key == "checksums":
         alg, val = texts.get("algorithm", ""), texts.get("checksumValue", "")
         if val and val != TOO_LONG_MARKER and "checksumValue" in headers:
             if not re.fullmatch(r"[0-9a-fA-F]+", val):
-                add("error", "checksumValue", "16進数（0-9, a-f）以外の文字が含まれています（空白・改行を含む）。")
+                add("error", "checksumValue", t("excel.list.hash_not_hex"))
             elif alg in _HASH_HEX_LENGTHS and len(val) != _HASH_HEX_LENGTHS[alg]:
                 add("error", "checksumValue",
-                    f"{alg} は {_HASH_HEX_LENGTHS[alg]} 桁の16進数です（入力: {len(val)} 桁）。")
+                    t("excel.list.hash_length", alg=alg, expected=_HASH_HEX_LENGTHS[alg], actual=len(val)))
     elif spec.list_key == "externalRefs":
         cat, typ, loc = (texts.get("referenceCategory", ""), texts.get("referenceType", ""),
                          texts.get("referenceLocator", ""))
         expected = KNOWN_REFERENCE_TYPES.get(typ)
         if expected and cat and "referenceCategory" in headers and cat.replace("_", "-") != expected:
-            add("warning", "referenceCategory", f"referenceType '{typ}' の通常のカテゴリは {expected} です（入力: {cat}）。")
+            add("warning", "referenceCategory",
+                t("excel.list.category_mismatch", type=typ, expected=expected, actual=cat))
         prefix = _REF_LOCATOR_PREFIX.get(typ)
         if prefix and loc and loc != TOO_LONG_MARKER and "referenceLocator" in headers and not loc.startswith(prefix):
-            add("error", "referenceLocator", f"referenceType '{typ}' のロケーターは '{prefix}' で始まる必要があります。")
+            add("error", "referenceLocator", t("excel.list.locator_prefix", type=typ, prefix=prefix))
 
 
 def _row_label(sheet: str, row_nums: List[int]) -> str:
@@ -996,7 +993,7 @@ def _row_label(sheet: str, row_nums: List[int]) -> str:
     nums = sorted(set(row_nums))
     if len(nums) <= 3:
         return f"{sheet}!{','.join(str(n) for n in nums)}"
-    return f"{sheet}!{nums[0]}…{nums[-1]}（{len(nums)}行）"
+    return t("excel.row_label_many", sheet=sheet, first=nums[0], last=nums[-1], count=len(nums))
 
 
 def _plan_list_change(spec: ListSheetSpec, cols: List[FieldSpec], headers: Dict[str, int], sid: str,
@@ -1016,8 +1013,7 @@ def _plan_list_change(spec: ListSheetSpec, cols: List[FieldSpec], headers: Dict[
             if col.key in rd.formula_cols and raw is None:
                 letter = get_column_letter(headers[col.key] + 1)
                 local.append(ImportIssue("error", f"{spec.sheet}!{letter}{rd.row}",
-                                         f"[{sid}] {col.key}: 数式セルで計算結果が保存されていません"
-                                         "（Excel で開いて保存し直すか、値として貼り付けてください）。"))
+                                         f"[{sid}] {col.key}: {t('excel.note.formula_uncached')}"))
                 bad = formula_error = True
                 break
             texts[col.key] = _row_cell_text(col, raw)
@@ -1076,16 +1072,17 @@ def _build_list_changes(plan: ImportPlan, spec: ListSheetSpec, table: ParsedTabl
     missing = [c.key for c in spec.columns if c.required and c.key not in table.headers]
     if missing:
         issues.append(ImportIssue("error", f"{spec.sheet}!1",
-                                  f"必須の列 {', '.join(missing)} がありません。{spec.sheet} シートは無視します。"))
+                                  t("excel.issue.missing_required_columns",
+                                    columns=", ".join(missing), sheet=spec.sheet)))
         return
     cols = [c for c in spec.columns if c.key in table.headers]
     for dup in table.duplicate_headers:
-        issues.append(ImportIssue("warning", f"{spec.sheet}!1", f"見出し '{dup}' が重複しています。最初の列のみ使用します。"))
+        issues.append(ImportIssue("warning", f"{spec.sheet}!1", t("excel.issue.dup_header", name=dup)))
     known = {"SPDXID", "name"} | {c.key for c in spec.columns}
     for name, idx in table.headers.items():
         if name not in known:
             issues.append(ImportIssue("warning", f"{spec.sheet}!{get_column_letter(idx + 1)}1",
-                                      f"認識できない列 '{name}' は無視します。"))
+                                      t("excel.issue.unknown_column", name=name)))
 
     # SPDXID ごとに行をまとめる（並べ替えや離れた行でも 1 つの一覧として扱う）
     groups: Dict[str, List[RowData]] = {}
@@ -1095,7 +1092,7 @@ def _build_list_changes(plan: ImportPlan, spec: ListSheetSpec, table: ParsedTabl
         sid = "" if v is None else str(v).strip()
         if not sid:
             if any(not _is_blank(rd.values.get(c.key)) for c in cols):
-                issues.append(ImportIssue("warning", f"{spec.sheet}!A{rd.row}", "SPDXID が空の行は無視します。"))
+                issues.append(ImportIssue("warning", f"{spec.sheet}!A{rd.row}", t("excel.issue.blank_spdxid")))
             continue
         groups.setdefault(sid, []).append(rd)
 
@@ -1104,12 +1101,10 @@ def _build_list_changes(plan: ImportPlan, spec: ListSheetSpec, table: ParsedTabl
         where = f"{spec.sheet}!A{rows[0].row}"
         nodes = index.get(sid)
         if not nodes:
-            issues.append(ImportIssue("warning", where,
-                                      f"SBOM に存在しない SPDXID '{sid}' の行は無視します（パッケージの追加は未対応）。"))
+            issues.append(ImportIssue("warning", where, t("excel.issue.unknown_spdxid_list", sid=sid)))
             continue
         if len(nodes) > 1:
-            issues.append(ImportIssue("error", where,
-                                      f"SBOM 内で SPDXID '{sid}' が重複しているため、この一覧は反映できません。"))
+            issues.append(ImportIssue("error", where, t("excel.issue.dup_spdxid_sbom_list", sid=sid)))
             continue
         node = nodes[0]
         old_present = spec.list_key in node.properties
@@ -1117,7 +1112,7 @@ def _build_list_changes(plan: ImportPlan, spec: ListSheetSpec, table: ParsedTabl
         old_entries = _list_entries_or_none(node, spec.list_key)
         if old_entries is None:
             issues.append(ImportIssue("warning", where,
-                                      f"[{sid}] {spec.list_key} が標準的でない構造のため、Excel からは変更しません。"))
+                                      t("excel.issue.nonstandard_list", sid=sid, field_key=spec.list_key)))
             continue
         matched += 1
         change = _plan_list_change(spec, cols, table.headers, sid, node, old_present, old_val,
@@ -1142,29 +1137,24 @@ def build_changes(
     # --- メタ情報のチェック ---
     meta = parsed.meta
     if not meta:
-        issues.append(ImportIssue("warning", SHEET_META,
-                                  "_meta シートがありません。SBOMcraft が出力した Excel か確認してください。"))
+        issues.append(ImportIssue("warning", SHEET_META, t("excel.issue.no_meta")))
     else:
         try:
             fv = int(str(meta.get("formatVersion", "")).strip())
             if fv > FORMAT_VERSION:
-                issues.append(ImportIssue("warning", SHEET_META,
-                                          f"新しい書式バージョン({fv})のファイルです。一部の項目が正しく扱えない可能性があります。"))
+                issues.append(ImportIssue("warning", SHEET_META, t("excel.issue.newer_format", version=fv)))
         except ValueError:
-            issues.append(ImportIssue("warning", SHEET_META, "formatVersion を読み取れませんでした。"))
+            issues.append(ImportIssue("warning", SHEET_META, t("excel.issue.bad_format_version")))
         ns_x = str(meta.get("documentNamespace") or "")
         ns_now = str(_document_properties(root_node).get("documentNamespace") or "")
         if ns_x and ns_now and ns_x != ns_now:
             issues.append(ImportIssue("warning", SHEET_META,
-                                      "この Excel は別の SBOM から出力されたものの可能性があります"
-                                      f"（documentNamespace が一致しません）。\n  Excel : {ns_x}\n  現在  : {ns_now}"))
+                                      t("excel.issue.namespace_mismatch", excel=ns_x, current=ns_now)))
         if current_revision is not None:
             try:
                 rev_x = int(str(meta.get("editRevision", "")).strip())
                 if rev_x != current_revision:
-                    issues.append(ImportIssue("warning", SHEET_META,
-                                              "Excel を出力した後に、SBOMcraft 上で編集が行われています。"
-                                              "Excel の値で上書きされる項目を、プレビューで必ず確認してください。"))
+                    issues.append(ImportIssue("warning", SHEET_META, t("excel.issue.edited_since_export")))
             except ValueError:
                 pass
 
@@ -1173,12 +1163,11 @@ def build_changes(
     columns = collect_columns(pkg_nodes)
     spec_by_key = {s.key: s for s in columns}
     for dup in parsed.duplicate_headers:
-        issues.append(ImportIssue("warning", f"{SHEET_PACKAGES}!1",
-                                  f"見出し '{dup}' が重複しています。最初の列のみ使用します。"))
+        issues.append(ImportIssue("warning", f"{SHEET_PACKAGES}!1", t("excel.issue.dup_header", name=dup)))
     for name, idx in parsed.headers.items():
         if name != "SPDXID" and name not in spec_by_key:
             issues.append(ImportIssue("warning", f"{SHEET_PACKAGES}!{get_column_letter(idx + 1)}1",
-                                      f"認識できない列 '{name}' は無視します。"))
+                                      t("excel.issue.unknown_column", name=name)))
     edit_cols = [(name, idx, spec_by_key[name]) for name, idx in parsed.headers.items()
                  if name in spec_by_key and not spec_by_key[name].readonly]
 
@@ -1202,7 +1191,7 @@ def build_changes(
     reported_dups = set()
 
     plan.rows_total = len(parsed.rows)
-    total_work = max(1, len(parsed.rows) + sum(len(t.rows) for t in parsed.child_tables.values()))
+    total_work = max(1, len(parsed.rows) + sum(len(tb.rows) for tb in parsed.child_tables.values()))
     done = [0]
 
     def tick() -> None:
@@ -1218,22 +1207,19 @@ def build_changes(
         sid = _sid_of(rd)
         where_row = f"{SHEET_PACKAGES}!A{rd.row}"
         if not sid:
-            issues.append(ImportIssue("warning", where_row, "SPDXID が空の行は無視します。"))
+            issues.append(ImportIssue("warning", where_row, t("excel.issue.blank_spdxid")))
             continue
         if counts[sid] > 1:
             if sid not in reported_dups:
                 reported_dups.add(sid)
-                issues.append(ImportIssue("error", where_row,
-                                          f"SPDXID '{sid}' が Excel 内で重複しているため、該当行はすべて無視します。"))
+                issues.append(ImportIssue("error", where_row, t("excel.issue.dup_spdxid_excel", sid=sid)))
             continue
         nodes = index.get(sid)
         if not nodes:
-            issues.append(ImportIssue("warning", where_row,
-                                      f"SBOM に存在しない SPDXID '{sid}' の行は無視します（行の追加は未対応）。"))
+            issues.append(ImportIssue("warning", where_row, t("excel.issue.unknown_spdxid_row", sid=sid)))
             continue
         if len(nodes) > 1:
-            issues.append(ImportIssue("error", where_row,
-                                      f"SBOM 内で SPDXID '{sid}' が重複しているため、この行は反映できません。"))
+            issues.append(ImportIssue("error", where_row, t("excel.issue.dup_spdxid_sbom_row", sid=sid)))
             continue
 
         node = nodes[0]
@@ -1258,7 +1244,8 @@ def build_changes(
     for spec in LIST_SHEET_SPECS:
         if spec.sheet in parsed.child_errors:
             issues.append(ImportIssue("error", spec.sheet,
-                                      f"{parsed.child_errors[spec.sheet]} {spec.sheet} シートは無視します。"))
+                                      t("excel.issue.sheet_ignored",
+                                        error=parsed.child_errors[spec.sheet], sheet=spec.sheet)))
             continue
         table = parsed.child_tables.get(spec.sheet)
         if table is not None:
@@ -1294,7 +1281,7 @@ def apply_changes(changes: Iterable[CellChange]) -> ApplyResult:
             else:
                 conflict = (not present) or work[ch.field] != ch.old
             if conflict:
-                result.skipped.append((ch, "計画作成後に値が変更されたため適用しませんでした。"))
+                result.skipped.append((ch, t("excel.apply.conflict")))
                 continue
             if ch.op == "delete":
                 del work[ch.field]
@@ -1332,9 +1319,9 @@ def describe_entries(list_key: str, entries: Optional[List[Any]], prefix: str = 
 def describe_value(value: Any, list_key: str = "") -> str:
     """プレビュー表示用の文字列化。"""
     if value is None:
-        return "(未設定)"
+        return t("excel.value.unset")
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, list):
-        return describe_entries(list_key, value) or "(空)"
+        return describe_entries(list_key, value) or t("excel.value.empty_list")
     return str(value)

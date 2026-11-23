@@ -20,8 +20,8 @@ _PLACEHOLDER = re.compile(r"\{(\w*)\}")
 
 
 def _catalog(lang):
-    with open(os.path.join(ROOT, "locales", f"{lang}.json"), encoding="utf-8") as f:
-        return json.load(f)
+    i18n.reload_catalogs()
+    return i18n.catalog(lang)          # ja.json + ja.*.json を結合したもの
 
 
 def _used_static_keys():
@@ -42,7 +42,7 @@ def _used_static_keys():
                     continue
                 fn = node.func
                 fname = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
-                idx = 0 if fname == "t" else 1 if fname == "t_in" else None
+                idx = 0 if fname in ("t", "_bi") else 1 if fname == "t_in" else None
                 if idx is None or len(node.args) <= idx:
                     continue
                 arg = node.args[idx]
