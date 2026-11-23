@@ -401,6 +401,9 @@ def _cell_text_for(props: Dict[str, Any], key: str) -> Optional[str]:
     text = _export_text(val)
     if text is None or text == "":
         return None
+    # 改行は LF に統一して書く（Excel のセル内改行も LF）。CR を含めると、環境（lxml の有無・OS・ライブラリの版）に
+    # よって XML への書き出し／読み戻しで改行が増減することがある。取り込み側の比較は _nl() で CRLF/CR も LF に揃える。
+    text = _nl(text)
     if len(text) > MAX_CELL_CHARS:
         return TOO_LONG_MARKER
     return text
@@ -839,14 +842,14 @@ def _validate_changed(spec: FieldSpec, new: Any, notes: Notes) -> bool:
     """変更されたセルだけを検証する。error があれば False（その変更は適用しない）。"""
     ok = True
     if spec.kind == "enum" and new not in spec.choices:
-        notes.append(("error", t("excel.val.enum", field_key=spec.key, choices=", ".join(spec.choices), input=repr(new))))
+        notes.append(("error", t("excel.val.enum", key=spec.key, choices=", ".join(spec.choices), input=repr(new))))
         ok = False
     if spec.kind == "date" and not _DATE_RE.match(str(new)):
-        notes.append(("error", t("excel.val.date", field_key=spec.key, input=repr(new))))
+        notes.append(("error", t("excel.val.date", key=spec.key, input=repr(new))))
         ok = False
     if spec.key in ("supplier", "originator") and isinstance(new, str):
         if new != "NOASSERTION" and not _AGENT_RE.match(new):
-            notes.append(("warning", t("excel.val.agent", field_key=spec.key, input=repr(new))))
+            notes.append(("warning", t("excel.val.agent", key=spec.key, input=repr(new))))
     if isinstance(new, str) and new != new.strip():
         notes.append(("warning", t("excel.note.whitespace")))
     return ok
@@ -860,8 +863,7 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
     """
     notes: Notes = []
 
-    # ▼ ここでレガシーマーカーや未出力マーカーを確実に弾くようにする
-    if _is_too_long_marker(raw) or _is_too_long_marker(raw):  # ←もしレガシーマーカー判定関数があればここに追加、またはまとめる
+    if _is_too_long_marker(raw):                # 『未出力』マーカー（旧バージョンのものも含む）は無視
         return None, None, notes
     if is_formula:
         if raw is None:
@@ -879,7 +881,7 @@ def _evaluate_cell(spec: FieldSpec, old_present: bool, old: Any, raw: Any,
         if old_text in (None, ""):
             return None, None, []
         if spec.required:
-            notes.append(("error", t("excel.note.required_blank", field_key=spec.key)))
+            notes.append(("error", t("excel.note.required_blank", key=spec.key)))
             return None, None, notes
         return "delete", None, notes
 
@@ -1112,7 +1114,7 @@ def _build_list_changes(plan: ImportPlan, spec: ListSheetSpec, table: ParsedTabl
         old_entries = _list_entries_or_none(node, spec.list_key)
         if old_entries is None:
             issues.append(ImportIssue("warning", where,
-                                      t("excel.issue.nonstandard_list", sid=sid, field_key=spec.list_key)))
+                                      t("excel.issue.nonstandard_list", sid=sid, key=spec.list_key)))
             continue
         matched += 1
         change = _plan_list_change(spec, cols, table.headers, sid, node, old_present, old_val,

@@ -83,8 +83,8 @@ class CatalogTest(unittest.TestCase):
         keys += [f"compare.version_change.{v}" for v in ("upgrade", "downgrade", "changed")]
         keys += [cmp.FIELD_GROUPS[g][0] for g in cmp.ALL_GROUPS]
         keys += [f"compare.matched.{m}" for m in ("spdxid", "name_version", "name", "purl", "name_fallback")]
-        for k in keys:
-            self.assertIn(k, ja)
+        missing = [k for k in keys if k not in ja]
+        self.assertEqual(missing, [], "カタログに無いキー（comparer.py の置き換え漏れの可能性）")
 
 
 class TranslateTest(unittest.TestCase):

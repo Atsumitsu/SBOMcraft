@@ -90,6 +90,19 @@ class BilingualExportTest(ExcelTestBase):
         i18n.set_language("ja")
 
 
+class NewlineTest(ExcelTestBase):
+    def test_exported_cells_contain_no_cr(self):
+        """CR を書かない（環境によって XML 経由で改行が増減するのを避けるため）。CRLF の元データも往復で差分にならない。"""
+        root, _ = make_root(2)                       # copyrightText に "\r\n" を含む
+        self.export(root)
+        ws = load_workbook(self.path)["Packages"]
+        for row in ws.iter_rows(values_only=True):
+            for v in row:
+                if isinstance(v, str):
+                    self.assertNotIn("\r", v)
+        self.assertEqual(self.plan(root).changes, [])
+
+
 class MarkerTest(ExcelTestBase):
     def test_new_marker_is_language_independent(self):
         self.assertIn("TRUNCATED", xio.TOO_LONG_MARKER)

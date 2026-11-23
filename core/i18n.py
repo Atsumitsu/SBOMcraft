@@ -139,7 +139,7 @@ def _lookup(lang: str, key: str):
     return None
 
 
-def t_in(lang: str, key: str, **params) -> str:
+def t_in(lang: str, key: str, /, **params) -> str:
     """指定した言語で文字列を取得する（UI 言語とは無関係）。"""
     text = _lookup(lang, key)
     if text is None:
@@ -155,7 +155,7 @@ def t_in(lang: str, key: str, **params) -> str:
 _PSEUDO_MAP = str.maketrans("aeiouAEIOU", "àéîöüÀÉÎÖÜ")
 
 
-def t(key: str, **params) -> str:
+def t(key: str, /, **params) -> str:
     """現在の言語で文字列を取得する。"""
     if _current == PSEUDO_LANGUAGE:
         return "[!" + t_in(FALLBACK_LANGUAGE, key, **params).translate(_PSEUDO_MAP) + "!]"

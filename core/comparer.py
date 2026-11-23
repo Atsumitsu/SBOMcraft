@@ -66,15 +66,16 @@ def group_label(g: str) -> str:    return t(FIELD_GROUPS[g][0])
 
 # 比較する項目のグループ（バージョンは常に比較する）
 FIELD_GROUPS: Dict[str, Tuple[str, Tuple[str, ...]]] = {
-    "license": ("ライセンス", ("licenseConcluded", "licenseDeclared", "licenseComments", "licenseInfoFromFiles")),
-    "supplier": ("供給者 / 作成者", ("supplier", "originator")),
-    "hash": ("ハッシュ", ("checksums", "packageVerificationCode")),
-    "extref": ("外部参照（purl / CPE など）", ("externalRefs",)),
-    "location": ("取得先・URL", ("downloadLocation", "homepage", "packageFileName")),
-    "text": ("説明・著作権表示", ("copyrightText", "summary", "description", "comment", "sourceInfo", "attributionTexts")),
-    "other": ("その他（名前・用途・日付・未知の項目）",
+    "license": ("compare.group.license", ("licenseConcluded", "licenseDeclared", "licenseComments", "licenseInfoFromFiles")),
+    "supplier": ("compare.group.supplier", ("supplier", "originator")),
+    "hash": ("compare.group.hash", ("checksums", "packageVerificationCode")),
+    "extref": ("compare.group.extref", ("externalRefs",)),
+    "location": ("compare.group.location", ("downloadLocation", "homepage", "packageFileName")),
+    "text": ("compare.group.text", ("copyrightText", "summary", "description", "comment", "sourceInfo", "attributionTexts")),
+    "other": ("compare.group.other",
               ("name", "filesAnalyzed", "primaryPackagePurpose", "releaseDate", "builtDate", "validUntilDate", "*")),
 }
+
 ALL_GROUPS: Tuple[str, ...] = tuple(FIELD_GROUPS.keys())
 
 _SET_FIELDS = frozenset({"checksums", "externalRefs", "licenseInfoFromFiles", "attributionTexts"})
