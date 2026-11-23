@@ -17,27 +17,28 @@ from PySide6.QtWidgets import (
 
 from core.parser import ParseWorker, SBOMNode
 from core.serializer import build_spdx_document, validate_spdx_document, write_json_atomic
-from core.validator import SBOMValidator
-from ui.detail_panel import DetailPanel
-from ui.dialogs import AboutDialog
-from ui.spdx3_dialog import Spdx3ExportDialog
+#from core.validator import SBOMValidator
 from core.spdx3_exporter import convert_node_to_spdx3
 from core.converter import SPDXToCycloneDXConverter
 from core.validator_worker import ValidationWorker
 from core.license_manager import SPDXLicenseManager
-from ui.settings_dialog import SettingsDialog
-from ui.license_check_dialog import LicenseCheckDialog
 from core import VERSION
 from core.excel_io import export_packages, apply_changes
 from core.excel_worker import ExcelImportWorker
-from ui.excel_import_dialog import ExcelImportPreviewDialog
 from core.comparer import ALL_GROUPS, MatchKey
 from core.drop_plan import DropKind, plan_drop
 from core.compare_worker import CompareWorker
+from ui.detail_panel import DetailPanel
+from ui.dialogs import AboutDialog
+from ui.excel_import_dialog import ExcelImportPreviewDialog
+from ui.license_check_dialog import LicenseCheckDialog
+from ui.settings_dialog import SettingsDialog
+from ui.spdx3_dialog import Spdx3ExportDialog
 from ui.compare_dialog import SbomCompareDialog
 from ui.compare_setup_dialog import CompareSetupDialog
 from ui import theme
 from ui.widgets import ISSUE_ROLE, TreeIssueDelegate, strip_leading_emoji
+
 from core import i18n
 from core.i18n import t
 
@@ -330,7 +331,7 @@ class MainWindow(QMainWindow):
         if not self.current_file_path:
             return
 
-        file_size = os.path.getsize(self.current_file_path)
+        file_size = os.path.getsize(self.current_file_path) if os.path.isfile(self.current_file_path) else 0
         limit_10mb = 10 * 1024 * 1024
 
         # 10MBを超える場合の警告チェック処理
@@ -338,14 +339,13 @@ class MainWindow(QMainWindow):
             size_mb = file_size / (1024 * 1024)
             reply = QMessageBox.question(
                 self,
-                "警告: 大容量ファイル",
-                f"ファイルサイズが 10MB を超えています ({size_mb:.2f} MB)。\n"
-                "検証処理に時間がかかる可能性がありますが、実行しますか？",
+                t("validation.main.large_title"),
+                t("validation.main.large_msg", size=f"{size_mb:.2f}"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.No:
-                self.compliance_report.append("⚠️ ユーザーにより検証処理がキャンセルされました。")
+                self.compliance_report.append(html.escape(t("validation.main.cancelled")))
                 return
 
         self.run_compliance_check(profile)
@@ -357,16 +357,14 @@ class MainWindow(QMainWindow):
 
         # 1. コンソール出力エリアの初期化
         self.compliance_report.clear()
-        self.compliance_report.append(f"⏳ 非同期検証処理を開始しました... [規格: {profile} ]")
+        self.compliance_report.append(html.escape(t("validation.main.started", profile=profile)))
 
-        # 2. 二重実行を防止するためにメニューやボタンを一時無効化
-        if hasattr(self, 'set_validation_menu_enabled'):
-            self.set_validation_menu_enabled(False)
+        # 2. 二重実行を防止するためにメニューを一時無効化
+        self.set_validation_menu_enabled(False)
 
-        # 3. バックグラウンドワーカーのインスタンス化
+        # 3. バックグラウンドワーカー（検証ロジックは core/validator.py）
         sbom_dict = self.build_dict_from_root_node(self.current_root_node)
         self.validation_worker = ValidationWorker(sbom_data=sbom_dict, profile=profile)
-#        self.validation_worker = ValidationWorker(self.current_file_path, profile=profile)
 
         # 4. リアルタイム進捗シグナルとUIスロットの接続
         self.validation_worker.progress_status.connect(self.on_validation_progress)
@@ -396,6 +394,20 @@ class MainWindow(QMainWindow):
         # メモリ解放・ワーカー参照のクリア
         self.validation_worker = None
 
+    def on_validation_finished(self, result: dict):
+        """検証完了時に最終HTMLレポートを描画する"""
+        self.compliance_report.setHtml(result["report_html"])
+
+        self._mark_validation_issues(result.get("error_packages", []))
+
+        # 無効化していたメニューの復元
+        self.set_validation_menu_enabled(True)
+
+        # スレッドが完全に終了してから参照を手放す（実行中の QThread を破棄しないため）
+        worker, self.validation_worker = self.validation_worker, None
+        if worker is not None:
+            worker.wait()
+
     def _mark_validation_issues(self, error_packages: list):
         """検証結果をツリーに反映する。行は塗らず、左端の色バーと名前の横のバッジで示す。"""
         root_item = self.tree_model.item(0, 0)
@@ -416,10 +428,11 @@ class MainWindow(QMainWindow):
             errs = [e.get("msg", "") for e in err.get("errors", [])]
             warns = [w.get("msg", "") for w in err.get("warnings", [])]
             if errs:
-                text = errs[0] + (f"（他 {len(errs) - 1} 件）" if len(errs) > 1 else "")
+                text = errs[0] + (t("validation.badge.more", n=len(errs) - 1) if len(errs) > 1 else "")
                 issues[err["spdx_id"]] = (("error", text), "\n".join(errs + warns))
             else:
-                text = (warns[0] if warns else "警告あり") + (f"（他 {len(warns) - 1} 件）" if len(warns) > 1 else "")
+                text = (warns[0] if warns else t("validation.badge.warning_only")) \
+                    + (t("validation.badge.more", n=len(warns) - 1) if len(warns) > 1 else "")
                 issues[err["spdx_id"]] = (("warning", text), "\n".join(warns))
 
         for row in range(folder.rowCount()):
@@ -764,9 +777,9 @@ class MainWindow(QMainWindow):
     def open_license_check_dialog(self):
         """ライセンスチェック詳細ダイアログを開く"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "先にSBOMファイルを読み込んでください。")
+            QMessageBox.warning(self, "Warning", t("main.warn.load_sbom_first"))
             return
-        
+
         dialog = LicenseCheckDialog(
             root_node=self.current_root_node,
             license_manager=self.license_manager,

@@ -2,7 +2,10 @@
 # Copyright (c) 2026 XZ Manj
 
 import re
+
+from core.i18n import t
 from core.license_manager import SPDXLicenseManager
+
 
 class LicenseStringValidator:
     """SPDXライセンスリストを使用してライセンス文字列の妥当性をチェックするクラス"""
@@ -17,15 +20,15 @@ class LicenseStringValidator:
         ライセンス文字列を解析し、有効かどうかを判定する。
         :return: {
             "is_valid": bool,
-            "status": "VALID" | "PLACEHOLDER" | "UNKNOWN_LICENSE",
-            "message": str
+            "status": "VALID" | "PLACEHOLDER" | "UNKNOWN_LICENSE",   ← 言語に依存しない ID
+            "message": str                                            ← 現在の言語の説明
         }
         """
         if not license_str:
             return {
                 "is_valid": True,  # 空欄は未定義扱いとしてエラーにはせずメッセージを分ける
                 "status": "PLACEHOLDER",
-                "message": "（未記載）"
+                "message": t("license.msg.unset"),
             }
 
         cleaned_str = license_str.strip()
@@ -36,7 +39,7 @@ class LicenseStringValidator:
             return {
                 "is_valid": True,
                 "status": "PLACEHOLDER",
-                "message": f"プレースホルダー: {cleaned_str}"
+                "message": t("license.msg.placeholder", value=cleaned_str),
             }
 
         # 2. WITH例外が含まれる場合の分解
@@ -49,9 +52,10 @@ class LicenseStringValidator:
             exc_valid = self.license_manager.is_valid_exception_id(exception_id) if exception_id else True
 
             if base_valid and exc_valid:
-                return {"is_valid": True, "status": "VALID", "message": "有効（例外付き）"}
+                return {"is_valid": True, "status": "VALID", "message": t("license.msg.valid_with_exception")}
             else:
-                return {"is_valid": False, "status": "UNKNOWN_LICENSE", "message": f"無効なIDが含まれています (例外部含む)"}
+                return {"is_valid": False, "status": "UNKNOWN_LICENSE",
+                        "message": t("license.msg.invalid_with_exception")}
 
         # 3. 複合式 (AND, OR, 括弧) または単体IDのチェック
         tokens = re.split(r'[\s\(\)]+', cleaned_str)
@@ -65,22 +69,22 @@ class LicenseStringValidator:
                 invalid_tokens.append(token_clean)
 
         if not invalid_tokens:
-            return {"is_valid": True, "status": "VALID", "message": "有効なSPDXライセンス"}
+            return {"is_valid": True, "status": "VALID", "message": t("license.msg.valid")}
         else:
             return {
                 "is_valid": False,
                 "status": "UNKNOWN_LICENSE",
-                "message": f"未登録のID: {', '.join(invalid_tokens)}"
+                "message": t("license.msg.unknown_ids", ids=", ".join(invalid_tokens)),
             }
 
     def _is_expr_valid(self, expr: str) -> bool:
         if self.license_manager.is_valid_spdx_id(expr):
             return True
         tokens = re.split(r'[\s\(\)]+', expr)
-        for t in tokens:
-            t_clean = t.strip()
-            if not t_clean or t_clean.upper() in {"AND", "OR", "WITH"}:
+        for tok in tokens:
+            tok_clean = tok.strip()
+            if not tok_clean or tok_clean.upper() in {"AND", "OR", "WITH"}:
                 continue
-            if not self.license_manager.is_valid_spdx_id(t_clean):
+            if not self.license_manager.is_valid_spdx_id(tok_clean):
                 return False
         return True

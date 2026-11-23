@@ -1,223 +1,259 @@
-# SPDX-License-Identifier: MIT
+# core/validator.py
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 SBOMcraft Project
+"""
+SBOM 適合性検証エンジン（NTIA 最小要件 / CISA 2026 拡張要件）。Qt 非依存。
 
-import os
-import json
+* 検証ロジックとレポート HTML の生成は、ここだけに置く（旧 validator.py と validator_worker.py の二重実装を統合）。
+* core/validator_worker.py は、このモジュールの validate_sbom() をスレッドで呼ぶだけ。
+* 画面に出す文言は core.i18n.t() で現在の言語に翻訳する。指摘の code（ERR_xxx / WRN_xxx）は言語に依存しない ID。
+* レポートの配色は set_colors() で差し替えられる（ui/theme.py がテーマ適用時に呼ぶ）。未設定ならライト相当の既定値。
+"""
+
+from __future__ import annotations
+
+import html
 import re
 import time
+from typing import Any, Callable, Dict, List, Optional
 
-class SBOMValidator:
-    """NTIA最小要件およびCISA 2026拡張要件に完全適合した検証エンジン"""
+from core.i18n import t
 
-    # 3.1 節に基づいた未定義・保留値の判定用予約語（小文字比較）
-    UNKNOWN_VALUES = {
-        "noassertion", 
-        "none", 
-        "unknown", 
-        "organization: unknown", 
-        "person: unknown"
-    }
+# 未定義・保留値の判定用予約語（小文字比較）
+UNKNOWN_VALUES = frozenset({
+    "noassertion", "none", "unknown", "organization: unknown", "person: unknown",
+})
 
-    @staticmethod
-    def check_compliance(file_path: str, profile: str = "CISA 2026") -> dict:
-        """
-        指定されたSBOMファイルを指定のプロファイルで検証する。
+# 非推奨・弱小ハッシュアルゴリズム（小文字表記）
+WEAK_HASH_ALGORITHMS = frozenset({"md5", "sha1", "sha-1"})
 
-        :param file_path: 検証対象のSPDX JSONファイルパス
-        :param profile: 検証プロファイル ("NTIA" または "CISA 2026")
-        :return: 検証結果を含む辞書オブジェクト
-        """
-        if not file_path or not os.path.exists(file_path):
-            return {
-                "passed": False,
-                "report_html": "<font color='red'>エラー: 指定されたファイルが見つかりません。</font>",
-                "error_packages": []
-            }
+# 指摘の ID。文言は locales の validation.issue.<ID>.msg / .fix
+ISSUE_CODES = (
+    "ERR_CISA_AUTHOR_MISSING", "ERR_CISA_TOOL_MISSING", "WRN_CISA_TOOL_VERSION_MISSING",
+    "ERR_CISA_TIMESTAMP_MISSING", "WRN_CISA_CONTEXT_MISSING", "ERR_CISA_RELATION_EMPTY",
+    "ERR_NTIA_NAME_MISSING", "ERR_NTIA_VERSION_MISSING", "ERR_NTIA_PROVIDER_MISSING",
+    "WRN_CISA_IDENTIFIER_MISSING", "WRN_CISA_HASH_MISSING", "ERR_CISA_WEAK_HASH_ALGORITHM",
+    "WRN_CISA_LICENSE_MISSING",
+)
 
-        start_time = time.time()
+_DEFAULT_COLORS: Dict[str, str] = {
+    "pass": "#28a745", "fail": "#dc3545", "warn": "#d97706",
+    "muted": "#555555", "head_bg": "#f8f9fa", "border": "#dddddd",
+}
+_colors: Dict[str, str] = dict(_DEFAULT_COLORS)
 
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-        except Exception as e:
-            return {
-                "passed": False,
-                "report_html": f"<font color='red'>エラー: JSONのパースに失敗しました ({str(e)})</font>",
-                "error_packages": []
-            }
 
-        creation_info = data.get("creationInfo", {})
-        creators = creation_info.get("creators", [])
-        packages = data.get("packages", [])
-        relationships = data.get("relationships", [])
-        doc_comment = data.get("comment", "") or creation_info.get("comment", "")
+def set_colors(colors: Dict[str, str]) -> None:
+    _colors.update(colors)
 
-        doc_errors = []
-        doc_warnings = []
-        error_packages = []
 
-        # ==========================================
-        # 1. ドキュメントレベル（メタデータ）の検証
-        # ==========================================
-        if profile.startswith("CISA"):
-            # A. SBOM Author (作成者: unknownや未指定は不可)
-            authors = [c for c in creators if c.startswith("Person:") or c.startswith("Organization:")]
-            valid_authors = [a for a in authors if a.strip().lower() not in SBOMValidator.UNKNOWN_VALUES]
-            if not valid_authors:
-                doc_errors.append("ERR_CISA_AUTHOR_MISSING: A. SBOM作成者 (Author) の指定がありません。")
+StatusCallback = Callable[[str], None]
+PercentCallback = Callable[[int], None]
 
-            # I. Tool Name & Tool Version (生成ツール名とバージョン情報)
-            tool_creators = [c for c in creators if c.startswith("Tool:")]
-            if not tool_creators:
-                doc_errors.append("ERR_CISA_TOOL_MISSING: I. 生成ツール名 (Tool Name) の指定がありません。")
-            else:
-                # バージョン表記（数字、ハイフン、スラッシュ等）が含まれるか検証
-                has_version = any(re.search(r'[\d\-\/\.\s]', c.replace("Tool:", "")) for c in tool_creators)
-                if not has_version:
-                    doc_warnings.append("WRN_CISA_TOOL_VERSION_MISSING: I. 生成ツールのバージョン (Tool Version) が明記されていない可能性があります。")
 
-            # J. Timestamp (タイムスタンプ)
-            created_timestamp = creation_info.get("created")
-            if not created_timestamp or str(created_timestamp).strip().lower() in SBOMValidator.UNKNOWN_VALUES:
-                doc_errors.append("ERR_CISA_TIMESTAMP_MISSING: J. タイムスタンプ (Timestamp) の指定がありません。")
+def issue(code: str) -> Dict[str, str]:
+    """指摘 1 件（code は言語非依存。msg / fix は現在の言語）。"""
+    return {"code": code, "msg": t(f"validation.issue.{code}.msg"), "fix": t(f"validation.issue.{code}.fix")}
 
-            # K. Generation Context (生成コンテキスト)
-            if not any(ctx in doc_comment.lower() for ctx in ["before build", "build", "after build", "deployed"]):
-                doc_warnings.append("WRN_CISA_CONTEXT_MISSING: K. SBOM生成コンテキスト (Generation Context) の明記が推奨されます。")
 
-            # H. Relationships Coverage (依存関係の網羅性)
-            if not relationships or len(relationships) == 0:
-                doc_errors.append("ERR_CISA_RELATION_EMPTY: H. 依存関係グラフ (Relationships) が1件も存在しません。")
+def _s(value: Any) -> str:
+    return "" if value is None else str(value)
 
-        # ==========================================
-        # 2. パッケージレベルの検証
-        # ==========================================
-        for idx, pkg in enumerate(packages):
-            pkg_name = pkg.get("name", "")
-            pkg_version = pkg.get("versionInfo", "")
-            pkg_id = pkg.get("SPDXID", f"Pkg-{idx}")
 
-            reasons_err = []
-            reasons_warn = []
+def _is_unknown_party(value: Any) -> bool:
+    """supplier / originator が未記載または未定義値か。
+    ※ 既存の挙動（予約語を『部分一致』で判定）をそのまま維持している。"""
+    s = _s(value)
+    return (not s) or any(u in s.lower() for u in UNKNOWN_VALUES)
 
-            # --- 2.1 NTIA / CISA 共通必須要件 ---
-            # Name
-            if not pkg_name or pkg_name.strip().lower() in SBOMValidator.UNKNOWN_VALUES:
-                reasons_err.append("ERR_NTIA_NAME_MISSING (Name欠落)")
 
-            # Version
-            if not pkg_version or pkg_version.strip().lower() in SBOMValidator.UNKNOWN_VALUES:
-                reasons_err.append("ERR_NTIA_VERSION_MISSING (Version欠落)")
+def _is_unknown_value(value: Any) -> bool:
+    """name / version / ライセンスなどが未記載または未定義値か（完全一致）。"""
+    s = _s(value).strip().lower()
+    return (not s) or s in UNKNOWN_VALUES
 
-            # Supplier / Originator (仕様 3.2 節: NOASSERTION / unknown は不適合 Error)
-            supplier = pkg.get("supplier", "")
-            originator = pkg.get("originator", "")
-            
-            supplier_invalid = (not supplier) or any(u in supplier.lower() for u in SBOMValidator.UNKNOWN_VALUES)
-            originator_invalid = (not originator) or any(u in originator.lower() for u in SBOMValidator.UNKNOWN_VALUES)
 
-            if supplier_invalid and originator_invalid:
-                reasons_err.append("ERR_NTIA_PROVIDER_MISSING (識別子Supplier/Originator欠落)")
+# ---------------------------------------------------------------------------
+# 検証
+# ---------------------------------------------------------------------------
 
-            # --- 2.2 CISA 2026 追加要件 ---
-            if profile.startswith("CISA"):
-                # E. 識別子 (purl / CPE)
-                ext_refs = pkg.get("externalRefs", [])
-                has_purl_or_cpe = any(
-                    ref.get("referenceType") in ["purl", "cpe22Type", "cpe23Type"]
-                    for ref in ext_refs
-                )
-                if not has_purl_or_cpe:
-                    reasons_warn.append("WRN_CISA_IDENTIFIER_MISSING (識別子purl/CPE欠落)")
+def validate_sbom(data: Optional[Dict[str, Any]], profile: str = "CISA2026",
+                  status: Optional[StatusCallback] = None,
+                  percent: Optional[PercentCallback] = None) -> Dict[str, Any]:
+    """
+    SPDX 辞書を検証して結果を返す。
+    戻り値: {"passed", "report_html", "error_packages", "doc_errors", "doc_warnings", "elapsed", "profile"}
+      error_packages の各要素: {"index", "spdx_id", "name", "errors": [issue], "warnings": [issue]}
+    status / percent は進捗通知（任意）。
+    """
+    say = status or (lambda _m: None)
+    pct = percent or (lambda _p: None)
+    start = time.time()
 
-                # F. ハッシュ値・アルゴリズム (仕様 3.2 節: NOASSERTION / NONE は Warning)
-                checksums = pkg.get("checksums", [])
-                has_valid_hash = False
-                if checksums:
-                    for chk in checksums:
-                        val = str(chk.get("checksumValue", "")).strip().lower()
-                        if val and val not in SBOMValidator.UNKNOWN_VALUES:
-                            has_valid_hash = True
-                            break
-                if not has_valid_hash:
-                    reasons_warn.append("WRN_CISA_HASH_MISSING (Hash/アルゴリズム未記載)")
+    if not data:
+        say(t("validation.progress.empty"))
+        report = f"<font color='red'>{html.escape(t('validation.progress.empty_report'))}</font>"
+        return _result(False, profile, time.time() - start, [], [], [], report)
 
-                # G. ライセンス情報 (仕様 3.2 節: NOASSERTION / NONE は Warning)
-                lic_concluded = str(pkg.get("licenseConcluded", "")).strip().lower()
-                lic_declared = str(pkg.get("licenseDeclared", "")).strip().lower()
+    say(t("validation.progress.parsing"))
+    pct(20)
+    creation_info = data.get("creationInfo")
+    if not isinstance(creation_info, dict):
+        creation_info = {}
+    creators = [c for c in (creation_info.get("creators") or []) if isinstance(c, str)]
+    packages = data.get("packages") or []
+    relationships = data.get("relationships") or []
+    doc_comment = _s(data.get("comment") or creation_info.get("comment"))
+    pct(30)
 
-                concluded_invalid = (not lic_concluded) or (lic_concluded in SBOMValidator.UNKNOWN_VALUES)
-                declared_invalid = (not lic_declared) or (lic_declared in SBOMValidator.UNKNOWN_VALUES)
+    doc_errors: List[Dict[str, str]] = []
+    doc_warnings: List[Dict[str, str]] = []
+    error_packages: List[Dict[str, Any]] = []
+    is_cisa = profile.startswith("CISA")
 
-                if concluded_invalid and declared_invalid:
-                    reasons_warn.append("WRN_CISA_LICENSE_MISSING (License未明記)")
+    # ---- ドキュメントレベル（メタデータ） ----
+    say(t("validation.progress.doc_check"))
+    if is_cisa:
+        authors = [c for c in creators if c.startswith("Person:") or c.startswith("Organization:")]
+        if not [a for a in authors if a.strip().lower() not in UNKNOWN_VALUES]:
+            doc_errors.append(issue("ERR_CISA_AUTHOR_MISSING"))
 
-            # エラーまたは警告がある場合のみ記録
-            if reasons_err or reasons_warn:
-                error_packages.append({
-                    "index": idx,
-                    "spdx_id": pkg_id,
-                    "name": pkg_name or "Unknown",
-                    "errors": reasons_err,
-                    "warnings": reasons_warn
-                })
+        tool_creators = [c for c in creators if c.startswith("Tool:")]
+        if not tool_creators:
+            doc_errors.append(issue("ERR_CISA_TOOL_MISSING"))
+        elif not any(re.search(r"[\d\-\/\.\s]", c.replace("Tool:", "")) for c in tool_creators):
+            doc_warnings.append(issue("WRN_CISA_TOOL_VERSION_MISSING"))
 
-        # ==========================================
-        # 3. 総合合否判定とレポート生成
-        # ==========================================
-        has_pkg_errors = any(len(p["errors"]) > 0 for p in error_packages)
-        passed = (len(doc_errors) == 0) and (not has_pkg_errors)
+        created = creation_info.get("created")
+        if not created or _s(created).strip().lower() in UNKNOWN_VALUES:
+            doc_errors.append(issue("ERR_CISA_TIMESTAMP_MISSING"))
 
-        elapsed = time.time() - start_time
-        report_html = SBOMValidator._generate_html_report(
-            profile, passed, elapsed, doc_errors, doc_warnings, error_packages
-        )
+        if not any(ctx in doc_comment.lower() for ctx in ("before build", "build", "after build", "deployed")):
+            doc_warnings.append(issue("WRN_CISA_CONTEXT_MISSING"))
 
-        return {
-            "passed": passed,
-            "report_html": report_html,
-            "error_packages": error_packages
-        }
+        if not relationships:
+            doc_errors.append(issue("ERR_CISA_RELATION_EMPTY"))
+    pct(40)
 
-    @staticmethod
-    def _generate_html_report(profile, passed, elapsed, doc_errors, doc_warnings, error_packages):
-        status_color = "#28a745" if passed else "#dc3545"
-        status_text = "適合 (PASS)" if passed else "不適合 (FAIL)"
+    # ---- パッケージレベル ----
+    total = len(packages)
+    say(t("validation.progress.pkg_start", total=f"{total:,}"))
+    update_interval = max(1, total // 20)
 
-        html = f"""
-        <div style="font-family: sans-serif; line-height: 1.5;">
-          <h3>📋 SBOM適合性検証レポート [{profile}]</h3>
-          <p><b>総合判定:</b> <span style="color: {status_color}; font-weight: bold; font-size: 1.1em;">{status_text}</span> 
-          (検証時間: {elapsed:.3f} 秒)</p>
-        """
+    for idx, pkg in enumerate(packages):
+        if idx % update_interval == 0 or idx == total - 1:
+            p = 40 + int((idx / total) * 50)
+            say(t("validation.progress.pkg_progress", done=f"{idx + 1:,}", total=f"{total:,}", pct=p))
+            pct(p)
+        if not isinstance(pkg, dict):
+            continue
 
-        if doc_errors or doc_warnings:
-            html += "<h4>📄 ドキュメントメタデータの検証結果</h4><ul>"
-            for err in doc_errors:
-                html += f"<li style='color: #dc3545;'>❌ <b>[ERROR]</b> {err}</li>"
-            for warn in doc_warnings:
-                html += f"<li style='color: #d97706;'>⚠️ <b>[WARN]</b> {warn}</li>"
-            html += "</ul>"
+        pkg_name = _s(pkg.get("name"))
+        pkg_id = pkg.get("SPDXID") or f"Pkg-{idx}"
+        errs: List[Dict[str, str]] = []
+        warns: List[Dict[str, str]] = []
 
-        if error_packages:
-            html += f"<h4>📦 パッケージ単位の不備・警告一覧 ({len(error_packages)}件)</h4>"
-            html += "<table border='1' cellspacing='0' cellpadding='6' style='border-collapse:collapse; width:100%; border: 1px solid #ddd;'>"
-            html += "<tr bgcolor='#f8f9fa'><th>Pkg ID</th><th>パッケージ名</th><th>エラー項目 (Error)</th><th>警告項目 (Warning)</th></tr>"
-            
-            for p in error_packages:
-                err_str = "<br>".join([f"<font color='#dc3545'>❌ {e}</font>" for e in p['errors']]) if p['errors'] else "-"
-                warn_str = "<br>".join([f"<font color='#d97706'>⚠️ {w}</font>" for w in p['warnings']]) if p['warnings'] else "-"
-                
-                html += f"<tr>"
-                html += f"<td><code>{p['spdx_id']}</code></td>"
-                html += f"<td><b>{p['name']}</b></td>"
-                html += f"<td>{err_str}</td>"
-                html += f"<td>{warn_str}</td>"
-                html += f"</tr>"
-            html += "</table>"
-        else:
-            html += "<p style='color: #28a745;'>すべてのパッケージが指定された検証条件を満たしています。</p>"
+        if _is_unknown_value(pkg_name):
+            errs.append(issue("ERR_NTIA_NAME_MISSING"))
+        if _is_unknown_value(pkg.get("versionInfo")):
+            errs.append(issue("ERR_NTIA_VERSION_MISSING"))
+        if _is_unknown_party(pkg.get("supplier")) and _is_unknown_party(pkg.get("originator")):
+            errs.append(issue("ERR_NTIA_PROVIDER_MISSING"))
 
-        html += "</div>"
-        return html
-    
+        if is_cisa:
+            ext_refs = [r for r in (pkg.get("externalRefs") or []) if isinstance(r, dict)]
+            if not any(r.get("referenceType") in ("purl", "cpe22Type", "cpe23Type") for r in ext_refs):
+                warns.append(issue("WRN_CISA_IDENTIFIER_MISSING"))
+
+            has_valid_hash = has_strong_hash = False
+            for chk in (pkg.get("checksums") or []):
+                if not isinstance(chk, dict):
+                    continue
+                val = _s(chk.get("checksumValue")).strip().lower()
+                algo = _s(chk.get("algorithm")).strip().lower()
+                if val and val not in UNKNOWN_VALUES:
+                    has_valid_hash = True
+                    if algo not in WEAK_HASH_ALGORITHMS:
+                        has_strong_hash = True
+            if not has_valid_hash:
+                warns.append(issue("WRN_CISA_HASH_MISSING"))
+            elif not has_strong_hash:
+                errs.append(issue("ERR_CISA_WEAK_HASH_ALGORITHM"))
+
+            if _is_unknown_value(pkg.get("licenseConcluded")) and _is_unknown_value(pkg.get("licenseDeclared")):
+                warns.append(issue("WRN_CISA_LICENSE_MISSING"))
+
+        if errs or warns:
+            error_packages.append({"index": idx, "spdx_id": pkg_id, "name": pkg_name or "Unknown",
+                                   "errors": errs, "warnings": warns})
+
+    # ---- レポート ----
+    say(t("validation.progress.report"))
+    pct(95)
+    passed = not doc_errors and not any(p["errors"] for p in error_packages)
+    elapsed = time.time() - start
+    report = build_report_html(profile, passed, elapsed, doc_errors, doc_warnings, error_packages)
+    pct(100)
+    say(t("validation.progress.done", sec=f"{elapsed:.2f}"))
+    return _result(passed, profile, elapsed, doc_errors, doc_warnings, error_packages, report)
+
+
+def _result(passed, profile, elapsed, doc_errors, doc_warnings, error_packages, report_html) -> Dict[str, Any]:
+    return {"passed": passed, "report_html": report_html, "error_packages": error_packages,
+            "doc_errors": doc_errors, "doc_warnings": doc_warnings, "elapsed": elapsed, "profile": profile}
+
+
+# ---------------------------------------------------------------------------
+# レポート HTML
+# ---------------------------------------------------------------------------
+
+def _e(value: Any) -> str:
+    return html.escape(_s(value))
+
+
+def build_report_html(profile: str, passed: bool, elapsed: float,
+                      doc_errors: List[Dict[str, str]], doc_warnings: List[Dict[str, str]],
+                      error_packages: List[Dict[str, Any]]) -> str:
+    c = _colors
+    status_color = c["pass"] if passed else c["fail"]
+    status_text = t("validation.report.pass") if passed else t("validation.report.fail")
+
+    out = [
+        '<div style="font-family: sans-serif; line-height: 1.5;">',
+        f"<h3>{_e(t('validation.report.title', profile=profile))}</h3>",
+        f"<p><b>{_e(t('validation.report.overall'))}</b> "
+        f"<span style=\"color: {status_color}; font-weight: bold; font-size: 1.1em;\">{_e(status_text)}</span> "
+        f"{_e(t('validation.report.elapsed', sec=f'{elapsed:.3f}'))}</p>",
+    ]
+
+    fix_label = _e(t("validation.report.fix_label"))
+    if doc_errors or doc_warnings:
+        out.append(f"<h4>{_e(t('validation.report.doc_heading'))}</h4><ul>")
+        for err in doc_errors:
+            out.append(f"<li style='color: {c['fail']}; margin-bottom: 6px;'>❌ <b>[{_e(err['code'])}]</b> {_e(err['msg'])}<br>"
+                       f"<span style='color: {c['muted']}; font-size: 0.9em;'>💡 <b>{fix_label}</b> {_e(err['fix'])}</span></li>")
+        for warn in doc_warnings:
+            out.append(f"<li style='color: {c['warn']}; margin-bottom: 6px;'>⚠️ <b>[{_e(warn['code'])}]</b> {_e(warn['msg'])}<br>"
+                       f"<span style='color: {c['muted']}; font-size: 0.9em;'>💡 <b>{fix_label}</b> {_e(warn['fix'])}</span></li>")
+        out.append("</ul>")
+
+    if error_packages:
+        out.append(f"<h4>{_e(t('validation.report.pkg_heading', n=len(error_packages)))}</h4>")
+        out.append(f"<table border='1' cellspacing='0' cellpadding='6' "
+                   f"style='border-collapse:collapse; width:100%; border: 1px solid {c['border']};'>")
+        out.append(f"<tr bgcolor='{c['head_bg']}'><th>Pkg ID</th><th>{_e(t('validation.report.col_name'))}</th>"
+                   f"<th>{_e(t('validation.report.col_errors'))}</th><th>{_e(t('validation.report.col_warnings'))}</th></tr>")
+        for p in error_packages:
+            err_items = [f"<font color='{c['fail']}'>❌ <b>[{_e(e['code'])}]</b> {_e(e['msg'])}</font><br>"
+                         f"<small style='color:{c['muted']};'>💡 {_e(e['fix'])}</small>" for e in p["errors"]]
+            warn_items = [f"<font color='{c['warn']}'>⚠️ <b>[{_e(w['code'])}]</b> {_e(w['msg'])}</font><br>"
+                          f"<small style='color:{c['muted']};'>💡 {_e(w['fix'])}</small>" for w in p["warnings"]]
+            out.append(f"<tr><td><code>{_e(p['spdx_id'])}</code></td><td><b>{_e(p['name'])}</b></td>"
+                       f"<td>{'<br><br>'.join(err_items) if err_items else '-'}</td>"
+                       f"<td>{'<br><br>'.join(warn_items) if warn_items else '-'}</td></tr>")
+        out.append("</table>")
+    else:
+        out.append(f"<p style='color: {c['pass']};'>{_e(t('validation.report.all_ok'))}</p>")
+
+    out.append("</div>")
+    return "".join(out)

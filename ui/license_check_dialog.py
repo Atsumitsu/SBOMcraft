@@ -2,23 +2,25 @@
 # Copyright (c) 2026 XZ Manj
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, 
+    QDialog, QVBoxLayout, QHBoxLayout, QTableWidget,
     QTableWidgetItem, QPushButton, QLabel, QHeaderView, QMessageBox, QFileDialog
 )
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 
+from core.i18n import t
 from core.parser import SBOMNode
 from core.license_manager import SPDXLicenseManager
 from core.license_validator import LicenseStringValidator
+from ui import theme
+
 
 class LicenseCheckDialog(QDialog):
     """パッケージのライセンス情報を表形式で一覧表示し、検証結果をハイライトするダイアログ"""
     def __init__(self, root_node: SBOMNode, license_manager: SPDXLicenseManager, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("パッケージライセンス詳細チェック")
+        self.setWindowTitle(t("license.dlg.title"))
         self.resize(1000, 600)
-        
+
         self.root_node = root_node
         self.license_manager = license_manager
         self.validator = LicenseStringValidator(license_manager)
@@ -29,47 +31,41 @@ class LicenseCheckDialog(QDialog):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        info_label = QLabel(
-            "SBOMに含まれる全パッケージのライセンス情報（Concluded / Declared）の検証結果一覧です。\n"
-            "🟢 薄い緑: 未定義値（NOASSERTION等）  "
-            "🔴 薄い赤: 未登録または無効なライセンス識別子"
-        )
+        info_label = QLabel(t("license.dlg.info"))
+        info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
         # テーブルの定義（7列）
         self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels([
-            "パッケージID", "パッケージ名", "バージョン", 
-            "Concluded 記載", "Concluded 指摘事項", 
-            "Declared 記載", "Declared 指摘事項"
+            t("license.dlg.col_id"), t("license.dlg.col_name"), t("license.dlg.col_version"),
+            t("license.dlg.col_concluded"), t("license.dlg.col_concluded_issue"),
+            t("license.dlg.col_declared"), t("license.dlg.col_declared_issue"),
         ])
-        
+
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
-        
+        for col in (3, 4, 5, 6):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
 
         # 下部ボタンレイアウト
         btn_layout = QHBoxLayout()
-        
-        # ▼ 追加: CSVエクスポートボタン
-        self.btn_csv = QPushButton("📥 CSVエクスポート")
+
+        self.btn_csv = QPushButton(t("license.dlg.btn_csv"))
         self.btn_csv.clicked.connect(self.export_to_csv)
         btn_layout.addWidget(self.btn_csv)
-        
+
         btn_layout.addStretch()
-        
-        btn_close = QPushButton("閉じる")
+
+        btn_close = QPushButton(t("license.dlg.close"))
         btn_close.clicked.connect(self.accept)
         btn_layout.addWidget(btn_close)
-        
+
         layout.addLayout(btn_layout)
 
     def load_package_licenses(self):
@@ -81,8 +77,9 @@ class LicenseCheckDialog(QDialog):
         pkg_nodes = [c for c in packages_folder.children if c.node_type == "package"]
         self.table.setRowCount(len(pkg_nodes))
 
-        green_color = QColor("#e8f8f5")  # 薄い緑（プレースホルダー用）
-        red_color = QColor("#fadbd8")    # 薄い赤（エラー用）
+        # 行の色はテーマに合わせる（緑 = 未定義値のみ、赤 = 未登録・無効な識別子）
+        _, ok_bg, ok_fg = theme.tone_colors("success")
+        _, ng_bg, ng_fg = theme.tone_colors("danger")
 
         for row_idx, pkg_node in enumerate(pkg_nodes):
             props = pkg_node.properties
@@ -102,11 +99,11 @@ class LicenseCheckDialog(QDialog):
             has_error = (not conc_res["is_valid"]) or (not dec_res["is_valid"])
             is_placeholder_only = (conc_res["status"] == "PLACEHOLDER" and dec_res["status"] == "PLACEHOLDER")
 
-            row_bg = None
+            row_bg = row_fg = None
             if has_error:
-                row_bg = red_color
+                row_bg, row_fg = QColor(ng_bg), QColor(ng_fg)
             elif is_placeholder_only:
-                row_bg = green_color
+                row_bg, row_fg = QColor(ok_bg), QColor(ok_fg)
 
             items = [
                 QTableWidgetItem(pkg_id),
@@ -119,21 +116,19 @@ class LicenseCheckDialog(QDialog):
             ]
 
             for col_idx, item in enumerate(items):
-                if row_bg:
+                if row_bg is not None:
                     item.setBackground(row_bg)
-                if col_idx in (4, 6) and items[col_idx].text() != "-":
-                    item.setForeground(QColor("#c0392b"))
-                
+                    item.setForeground(row_fg)
                 self.table.setItem(row_idx, col_idx, item)
 
     def export_to_csv(self):
         """テーブルのデータをカンマ区切り、全項目ダブルクォーテーション囲みでCSV出力する"""
         if self.table.rowCount() == 0:
-            QMessageBox.warning(self, "Warning", "エクスポートするデータがありません。")
+            QMessageBox.warning(self, "Warning", t("license.dlg.csv_empty"))
             return
 
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "CSVエクスポート", "license_check_report.csv", "CSV Files (*.csv);;All Files (*)"
+            self, t("license.dlg.csv_title"), "license_check_report.csv", "CSV Files (*.csv);;All Files (*)"
         )
         if not file_path:
             return
@@ -160,10 +155,10 @@ class LicenseCheckDialog(QDialog):
                         row_data.append(f'"{escaped}"')
                     f.write(",".join(row_data) + "\n")
 
-            QMessageBox.information(self, "完了", f"CSVファイルの出力が完了しました:\n{file_path}")
+            QMessageBox.information(self, t("license.dlg.csv_done_title"), t("license.dlg.csv_done", path=file_path))
 
         except Exception as e:
-            QMessageBox.critical(self, "エラー", f"CSVの出力中にエラーが発生しました:\n{str(e)}")
+            QMessageBox.critical(self, t("license.dlg.csv_error_title"), t("license.dlg.csv_error", error=e))
 
     def _find_packages_folder(self, node: SBOMNode) -> SBOMNode:
         if not node:
@@ -175,4 +170,3 @@ class LicenseCheckDialog(QDialog):
             if found:
                 return found
         return None
-    
