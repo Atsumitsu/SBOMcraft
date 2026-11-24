@@ -1,0 +1,21 @@
+{
+  "serializer.warn.required": "[{where}] 必須項目 '{key}' がありません。",
+  "serializer.warn.spdx_version": "[Document] spdxVersion が 'SPDX-2.3' ではありません: {value}",
+  "serializer.warn.spdxid_missing": "[{where}] SPDXID がありません。",
+  "serializer.warn.spdxid_format": "[{where}] SPDXID の形式が不正です: {id}",
+  "serializer.warn.spdxid_dup": "[{where}] SPDXID が重複しています: {id}（{other} と重複）",
+  "serializer.warn.files_analyzed": "[{where}] filesAnalyzed は真偽値である必要があります: {value}",
+  "serializer.warn.dangling_ref": "[{where}] {key} が存在しない SPDXID を参照しています: {ref}",
+  "serializer.warn.licenseid_format": "[{where}] licenseId の形式が不正です（LicenseRef-… が必要）: {id}",
+  "serializer.warn.truncated": "…（警告が多いため以降は省略）",
+
+  "serializer.err.bool": "真偽値は true または false で入力してください: {value}",
+  "serializer.err.int": "整数で入力してください: {value}",
+  "serializer.err.float": "数値で入力してください: {value}",
+  "serializer.err.json_type": "JSON にシリアライズできない型です: {type}",
+
+  "compare.worker.load_failed": "{label} の読み込みに失敗しました: {error}",
+  "compare.worker.permission": "ファイルを開けません。他のアプリで開いたままになっていないか確認してください。",
+
+  "parser.err.empty": "ファイルが空です。"
+}

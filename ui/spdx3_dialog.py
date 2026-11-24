@@ -1,19 +1,29 @@
+# ui/spdx3_dialog.py
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 XZ Manj
+
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, 
+    QDialog, QVBoxLayout, QFormLayout,
     QLineEdit, QComboBox, QTextEdit, QDialogButtonBox, QLabel
 )
-from PySide6.QtGui import QColor
 
-# ui/spdx3_dialog.py の該当部分の変更・追加
+from core.i18n import t
+from ui import theme
+
+SBOM_TYPES = ["analyzed", "build", "deployed", "design", "runtime", "source"]   # SPDX 3.0.1 の公式語彙
+
+
 class Spdx3ExportDialog(QDialog):
     def __init__(self, existing_meta: dict = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Export to SPDX 3.0.1 (CISA 2026 Metadata)")
-        self.resize(500, 480)
+        self.setWindowTitle(t("spdx3.title"))
+        self.resize(520, 480)
 
         self.existing_meta = existing_meta if existing_meta else {}
         self._parse_existing_meta()
-        self.pink_style = "background-color: #ffcccc; color: #000000;"
+        # 元の SBOM にデータが無い項目の強調表示（テーマに合わせた色）
+        tok = theme.tokens()
+        self.missing_style = f"background-color: {tok.danger_bg}; color: {tok.danger_fg};"
         self.init_ui()
 
     def _parse_existing_meta(self):
@@ -43,27 +53,25 @@ class Spdx3ExportDialog(QDialog):
                     self.parsed_tool_name = c
                     break
         if not self.parsed_tool_name:
-            self.parsed_tool_name = "Tool: SBOMcraft-v0.6.4.0"
+            self.parsed_tool_name = "Tool: SBOMcraft-version"
 
         self.parsed_doc_name = self.existing_meta.get("document_name", "SBOM-Document")
         self.parsed_created_date = self.existing_meta.get("created", "")
         self.parsed_comment = self.existing_meta.get("comment", "")
-        
+
         # sbom_type の初期値取得（旧 generation_context からの移行も考慮）
         self.parsed_sbom_type = self.existing_meta.get("sbom_type", "")
         if not self.parsed_sbom_type:
             old_ctx = self.existing_meta.get("generation_context", "analyzed")
             self.parsed_sbom_type = "analyzed" if old_ctx == "after build" else old_ctx
-            
+
         self.parsed_license = self.existing_meta.get("data_license", "CC0-1.0")
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
 
-        desc_label = QLabel(
-            "CISA 2026 最小要件に準拠した SPDX 3.0.1 メタデータを入力してください。\n"
-            "背景がピンク色の項目は、元のSBOMにデータが不足している箇所です。"
-        )
+        desc_label = QLabel(t("spdx3.desc"))
+        desc_label.setWordWrap(True)
         main_layout.addWidget(desc_label)
 
         form_layout = QFormLayout()
@@ -72,69 +80,63 @@ class Spdx3ExportDialog(QDialog):
         self.doc_name_input = QLineEdit()
         self.doc_name_input.setText(self.parsed_doc_name)
         if not self.parsed_doc_name:
-            self.doc_name_input.setStyleSheet(self.pink_style)
-        form_layout.addRow("Document Name *:", self.doc_name_input)
+            self.doc_name_input.setStyleSheet(self.missing_style)
+        form_layout.addRow(t("spdx3.doc_name"), self.doc_name_input)
 
         # 2. 作成者名
         self.creator_input = QLineEdit()
         self.creator_input.setText(self.parsed_creator_name)
         if not self.parsed_creator_name:
-            self.creator_input.setStyleSheet(self.pink_style)
-        form_layout.addRow("Creator Name *:", self.creator_input)
+            self.creator_input.setStyleSheet(self.missing_style)
+        form_layout.addRow(t("spdx3.creator_name"), self.creator_input)
 
-        # 3. 作成者タイプ
+        # 3. 作成者タイプ（値は SPDX の語彙なので翻訳しない）
         self.creator_type_combo = QComboBox()
         self.creator_type_combo.addItems(["Organization", "Person", "Tool"])
         if self.parsed_creator_type in ["Organization", "Person", "Tool"]:
             self.creator_type_combo.setCurrentText(self.parsed_creator_type)
-        form_layout.addRow("Creator Type:", self.creator_type_combo)
+        form_layout.addRow(t("spdx3.creator_type"), self.creator_type_combo)
 
         # 4. 生成ツール名
         self.tool_name_input = QLineEdit()
         self.tool_name_input.setText(self.parsed_tool_name)
         if not self.parsed_tool_name:
-            self.tool_name_input.setStyleSheet(self.pink_style)
-        form_layout.addRow("Tool Name *:", self.tool_name_input)
+            self.tool_name_input.setStyleSheet(self.missing_style)
+        form_layout.addRow(t("spdx3.tool_name"), self.tool_name_input)
 
         # 5. 作成日時
         self.created_input = QLineEdit()
         self.created_input.setText(self.parsed_created_date)
         if not self.parsed_created_date:
-            self.created_input.setStyleSheet(self.pink_style)
-        form_layout.addRow("Created Date *:", self.created_input)
+            self.created_input.setStyleSheet(self.missing_style)
+        form_layout.addRow(t("spdx3.created"), self.created_input)
 
-        # 6. SBOM Type (sbomType - SPDX 3.0.1 公式語彙) 【変更箇所】
+        # 6. SBOM Type (sbomType - SPDX 3.0.1 公式語彙)
         self.sbom_type_combo = QComboBox()
-        self.sbom_type_combo.addItems([
-            "analyzed", 
-            "build", 
-            "deployed", 
-            "design", 
-            "runtime", 
-            "source"
-        ])
-        if self.parsed_sbom_type in ["analyzed", "build", "deployed", "design", "runtime", "source"]:
+        self.sbom_type_combo.addItems(SBOM_TYPES)
+        if self.parsed_sbom_type in SBOM_TYPES:
             self.sbom_type_combo.setCurrentText(self.parsed_sbom_type)
         else:
             self.sbom_type_combo.setCurrentText("analyzed")
-        form_layout.addRow("SBOM Type (sbomType) *:", self.sbom_type_combo)
+        form_layout.addRow(t("spdx3.sbom_type"), self.sbom_type_combo)
 
         # 7. データライセンス
         self.license_combo = QComboBox()
         self.license_combo.addItems(["CC0-1.0", "Apache-2.0", "MIT", "NOASSERTION"])
         self.license_combo.setCurrentText(self.parsed_license)
-        form_layout.addRow("Data License:", self.license_combo)
+        form_layout.addRow(t("spdx3.data_license"), self.license_combo)
 
         # 8. コメント
         self.comment_input = QTextEdit()
         self.comment_input.setPlainText(self.parsed_comment)
         self.comment_input.setMaximumHeight(70)
-        form_layout.addRow("Comment / Note:", self.comment_input)
+        form_layout.addRow(t("spdx3.comment"), self.comment_input)
 
         main_layout.addLayout(form_layout)
 
+        # OK / Cancel の文言は Qt 標準の翻訳（qtbase_ja.qm）で切り替わる
         self.button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
@@ -152,8 +154,7 @@ class Spdx3ExportDialog(QDialog):
             "creator_type": creator_type,
             "tool_name": self.tool_name_input.text().strip(),
             "created": self.created_input.text().strip(),
-            "sbom_type": self.sbom_type_combo.currentText(),  # sbomTypeを返す
+            "sbom_type": self.sbom_type_combo.currentText(),
             "data_license": self.license_combo.currentText(),
             "comment": self.comment_input.toPlainText().strip()
         }
-    

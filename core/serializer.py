@@ -6,6 +6,7 @@
 
 Qt には依存しない（ノードは node_type / properties / children / extra_sections を
 持つ duck-typing で扱う）ため、単体テストが容易。
+画面に出す警告・エラー文言は core.i18n.t() で現在の言語に翻訳する。
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import shutil
 import tempfile
 from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Tuple
+
+from core.i18n import t
 
 # ---------------------------------------------------------------------------
 # 1. ツリー → SPDX 2.3 辞書
@@ -31,8 +34,8 @@ PACKAGE_PRIORITY_KEYS: List[str] = [
 # SPDX 2.3 JSON のトップレベルキーの標準的な並び順。
 # ここに無いキー（extra_sections 由来の未知キー等）は末尾に元の順序で付く。
 SPDX_TOP_LEVEL_ORDER: List[str] = [
-    "documentNamespace","spdxVersion", "dataLicense", "SPDXID", "name",
-    "comment","externalDocumentRefs", "creationInfo",  "documentDescribes",
+    "documentNamespace", "spdxVersion", "dataLicense", "SPDXID", "name",
+    "comment", "externalDocumentRefs", "creationInfo", "documentDescribes",
     "packages", "files", "snippets", "relationships", "annotations",
     "hasExtractedLicensingInfos",
 ]
@@ -96,39 +99,42 @@ _MAX_WARNINGS = 50
 
 
 def validate_spdx_document(doc: Dict[str, Any]) -> List[str]:
-    """SPDX 2.3 JSON スキーマ上の必須項目・ID 整合性を簡易チェックし、警告文のリストを返す。"""
+    """SPDX 2.3 JSON スキーマ上の必須項目・ID 整合性を簡易チェックし、警告文のリストを返す（現在の言語）。"""
     w: List[str] = []
 
     def warn(msg: str) -> None:
         if len(w) < _MAX_WARNINGS:
             w.append(msg)
         elif len(w) == _MAX_WARNINGS:
-            w.append("…（警告が多いため以降は省略）")
+            w.append(t("serializer.warn.truncated"))
+
+    def required(where: str, key: str) -> None:
+        warn(t("serializer.warn.required", where=where, key=key))
 
     # --- ドキュメントヘッダ ---
     for key in ("spdxVersion", "dataLicense", "SPDXID", "name", "documentNamespace", "creationInfo"):
         if key not in doc or doc[key] in ("", None):
-            warn(f"[Document] 必須項目 '{key}' がありません。")
+            required("Document", key)
     ver = doc.get("spdxVersion")
     if ver and ver != "SPDX-2.3":
-        warn(f"[Document] spdxVersion が 'SPDX-2.3' ではありません: {ver!r}")
+        warn(t("serializer.warn.spdx_version", value=repr(ver)))
     ci = doc.get("creationInfo")
     if isinstance(ci, dict):
         for key in ("created", "creators"):
             if not ci.get(key):
-                warn(f"[creationInfo] 必須項目 '{key}' がありません。")
+                required("creationInfo", key)
 
     # --- SPDXID の形式・重複 ---
     seen: Dict[str, str] = {}
 
     def register(spdx_id: Any, where: str) -> None:
         if not isinstance(spdx_id, str) or not spdx_id:
-            warn(f"[{where}] SPDXID がありません。")
+            warn(t("serializer.warn.spdxid_missing", where=where))
             return
         if not _SPDXID_RE.match(spdx_id):
-            warn(f"[{where}] SPDXID の形式が不正です: {spdx_id!r}")
+            warn(t("serializer.warn.spdxid_format", where=where, id=repr(spdx_id)))
         if spdx_id in seen:
-            warn(f"[{where}] SPDXID が重複しています: {spdx_id!r}（{seen[spdx_id]} と重複）")
+            warn(t("serializer.warn.spdxid_dup", where=where, id=repr(spdx_id), other=seen[spdx_id]))
         else:
             seen[spdx_id] = where
 
@@ -140,17 +146,17 @@ def validate_spdx_document(doc: Dict[str, Any]) -> List[str]:
         register(p.get("SPDXID"), where)
         for key in ("name", "downloadLocation"):
             if p.get(key) in (None, ""):
-                warn(f"[{where}] 必須項目 '{key}' がありません。")
+                required(where, key)
         if "filesAnalyzed" in p and not isinstance(p["filesAnalyzed"], bool):
-            warn(f"[{where}] filesAnalyzed は真偽値である必要があります: {p['filesAnalyzed']!r}")
+            warn(t("serializer.warn.files_analyzed", where=where, value=repr(p["filesAnalyzed"])))
 
     for i, f in enumerate(doc.get("files", [])):
         where = f"File[{i}] {f.get('fileName', '')}"
         register(f.get("SPDXID"), where)
         if not f.get("fileName"):
-            warn(f"[{where}] 必須項目 'fileName' がありません。")
+            required(where, "fileName")
         if not f.get("checksums"):
-            warn(f"[{where}] 必須項目 'checksums' がありません。")
+            required(where, "checksums")
 
     for i, s in enumerate(doc.get("snippets", [])):
         register(s.get("SPDXID"), f"Snippet[{i}]")
@@ -160,21 +166,21 @@ def validate_spdx_document(doc: Dict[str, Any]) -> List[str]:
         where = f"Relationship[{i}]"
         for key in ("spdxElementId", "relationshipType", "relatedSpdxElement"):
             if not r.get(key):
-                warn(f"[{where}] 必須項目 '{key}' がありません。")
+                required(where, key)
         for key in ("spdxElementId", "relatedSpdxElement"):
             ref = r.get(key)
             if (ref and ref not in seen and ref not in _SPECIAL_RELATED
                     and not str(ref).startswith("DocumentRef-")):
-                warn(f"[{where}] {key} が存在しない SPDXID を参照しています: {ref!r}")
+                warn(t("serializer.warn.dangling_ref", where=where, key=key, ref=repr(ref)))
 
     # --- 抽出ライセンス情報 ---
     for i, lic in enumerate(doc.get("hasExtractedLicensingInfos", [])):
         where = f"ExtractedLicense[{i}]"
         lid = lic.get("licenseId")
         if not lid or not _LICENSEREF_RE.match(str(lid)):
-            warn(f"[{where}] licenseId の形式が不正です（LicenseRef-… が必要）: {lid!r}")
+            warn(t("serializer.warn.licenseid_format", where=where, id=repr(lid)))
         if not lic.get("extractedText"):
-            warn(f"[{where}] 必須項目 'extractedText' がありません。")
+            required(where, "extractedText")
 
     return w
 
@@ -189,7 +195,7 @@ def json_default(obj: Any) -> Any:
         return int(obj) if obj == obj.to_integral_value() else float(obj)
     if isinstance(obj, (set, tuple)):
         return list(obj)
-    raise TypeError(f"JSON にシリアライズできない型です: {type(obj).__name__}")
+    raise TypeError(t("serializer.err.json_type", type=type(obj).__name__))
 
 
 def write_json_atomic(path: str, data: Any, indent: int = 2, verify: bool = True) -> None:
@@ -239,22 +245,22 @@ _INDENT = 4  # DetailPanel._flatten_properties が 1 階層ごとに付ける空
 
 
 def convert_value(old: Any, text: str) -> Any:
-    """元の値の型に合わせて入力文字列を変換する。型に合わなければ ValueError。"""
+    """元の値の型に合わせて入力文字列を変換する。型に合わなければ ValueError（メッセージは現在の言語）。"""
     if isinstance(old, bool):                      # bool は int のサブクラスなので先に判定
         low = text.strip().lower()
         if low in ("true", "false"):
             return low == "true"
-        raise ValueError(f"真偽値は true または false で入力してください: {text!r}")
+        raise ValueError(t("serializer.err.bool", value=repr(text)))
     if isinstance(old, int):
         try:
             return int(text.strip())
         except ValueError:
-            raise ValueError(f"整数で入力してください: {text!r}") from None
+            raise ValueError(t("serializer.err.int", value=repr(text))) from None
     if isinstance(old, (float, Decimal)):
         try:
             return float(text.strip())
         except ValueError:
-            raise ValueError(f"数値で入力してください: {text!r}") from None
+            raise ValueError(t("serializer.err.float", value=repr(text))) from None
     return text                                    # str / None はそのまま文字列として扱う
 
 

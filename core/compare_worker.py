@@ -8,6 +8,7 @@ from typing import Iterable, Optional, Union
 from PySide6.QtCore import QObject, Signal
 
 from core.comparer import CompareCanceled, MatchKey, compare
+from core.i18n import t
 from core.parser import ParseWorker, SBOMNode
 
 Source = Union[SBOMNode, str]       # 読み込み済みのルートノード、または SBOM JSON のパス
@@ -51,7 +52,7 @@ class CompareWorker(QObject):
         parser.run()
         self._parser = None
         if "error" in holder:
-            raise ValueError(f"{label} の読み込みに失敗しました: {holder['error']}")
+            raise ValueError(t("compare.worker.load_failed", label=label, error=holder["error"]))
         return holder.get("root")            # キャンセル時は None
 
     def run(self):
@@ -81,6 +82,6 @@ class CompareWorker(QObject):
         except CompareCanceled:
             self.finished.emit(None)
         except PermissionError:
-            self.error.emit("ファイルを開けません。他のアプリで開いたままになっていないか確認してください。")
+            self.error.emit(t("compare.worker.permission"))
         except Exception as e:                       # 想定外もダイアログで通知できるようにする
             self.error.emit(f"{type(e).__name__}: {e}")

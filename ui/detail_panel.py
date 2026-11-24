@@ -6,34 +6,44 @@ import os
 import copy
 import json
 from typing import Any, List
-from PySide6.QtCore import Qt,Signal
-from PySide6.QtGui import QIcon,QColor
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon, QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QTableWidget, QTableWidgetItem, QTextEdit, QSplitter, QHeaderView, QPushButton,QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QTableWidget, QTableWidgetItem, QTextEdit, QSplitter, QHeaderView, QPushButton, QMessageBox
 )
+from core.i18n import t
 from core.parser import SBOMNode
 from core.serializer import apply_flat_rows, json_default, PACKAGE_PRIORITY_KEYS
 from ui.dialogs import FullTextDialog
 from ui import theme
 
+
 class DetailPanel(QWidget):
-    # ▼【新規】ノードのデータが更新されたことを親に知らせるシグナル
+    # ノードのデータが更新されたことを親に知らせるシグナル
     node_updated = Signal(object)
     """選択されたノードのプロパティ(Key-Value)と生JSONをオンデマンド表示するパネル"""
 
     # 編集を許可するノード種別。対象を増やす場合はここに node_type を追加する
     # （例: {"package", "document_info"}）
     EDITABLE_NODE_TYPES = {"package"}
-    NOT_EDITABLE_TOOLTIP = "編集できるのは Packages 配下のパッケージのみです"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_json_text = ""
         self.current_node_name = ""
-        self.current_node = None  # 👈 保持しているノードを後から参照できるように保持すると便利です
-        self.original_properties_backup = None  # 🔄 リセット用に元のプロパティのコピーを保持
-        self.is_editing = False  # 👈 【追加】編集中フラグ
+        self.current_node = None
+        self.original_properties_backup = None  # リセット用に元のプロパティのコピーを保持
+        self.is_editing = False
         self.init_ui()
+
+    @staticmethod
+    def _icon_button(icon_file: str, text: str, fallback_prefix: str) -> QPushButton:
+        """アイコンファイルがあれば『アイコン + 文字』、無ければ『絵文字 + 文字』のボタンにする"""
+        icon_path = os.path.join("icons", icon_file)
+        if os.path.isfile(icon_path):
+            return QPushButton(QIcon(icon_path), " " + text)
+        return QPushButton(f"{fallback_prefix} {text}")
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -47,7 +57,7 @@ class DetailPanel(QWidget):
         kv_layout = QVBoxLayout(kv_container)
         kv_layout.setContentsMargins(0, 5, 0, 0)
 
-        # ▼ アイコン付きタイトルヘッダーの作成
+        # アイコン付きタイトルヘッダーの作成
         kv_header_layout = QHBoxLayout()
         kv_header_layout.setContentsMargins(2, 0, 0, 0)
         kv_header_layout.setSpacing(6)
@@ -58,54 +68,36 @@ class DetailPanel(QWidget):
             icon_label.setPixmap((theme.icon("table-2.svg") or QIcon(icon_path)).pixmap(16, 16))
         kv_header_layout.addWidget(icon_label)
 
-        title_label = QLabel("プロパティ (Key-Value)")
+        title_label = QLabel(t("detail.title"))
         title_label.setStyleSheet("font-weight: bold;")
-
         kv_header_layout.addWidget(title_label)
-#        kv_header_layout.addStretch()
-        # スペーサー
         kv_header_layout.addStretch()
 
-        # ▼ アクションボタン群の配置
-        icon_path = os.path.join("icons", "square-pen.svg")
-        self.btn_edit = (
-            QPushButton(QIcon(icon_path).pixmap(16, 16), " 編集")
-            if os.path.isfile(icon_path)
-            else QPushButton("✏️ 編集")
-        )
+        # アクションボタン群の配置
+        self.btn_edit = self._icon_button("square-pen.svg", t("detail.btn_edit"), "✏️")
         self.btn_edit.clicked.connect(self.start_edit_mode)
         self.btn_edit.setEnabled(False)  # ノード選択後、編集可能な種別のときだけ有効化
-        self.btn_edit.setToolTip(self.NOT_EDITABLE_TOOLTIP)
+        self.btn_edit.setToolTip(t("detail.not_editable_tip"))
         kv_header_layout.addWidget(self.btn_edit)
 
-        icon_path = os.path.join("icons", "undo-2.svg")
-        self.btn_reset = (
-            QPushButton(QIcon(icon_path).pixmap(16, 16), " リセット")
-            if os.path.isfile(icon_path)
-            else QPushButton("🔄 リセット")
-        )
+        self.btn_reset = self._icon_button("undo-2.svg", t("detail.btn_reset"), "🔄")
         self.btn_reset.setProperty("variant", "ghost")
         self.btn_reset.clicked.connect(self.reset_edits)
         self.btn_reset.setVisible(False)  # 初期状態は非表示
         kv_header_layout.addWidget(self.btn_reset)
 
-        icon_path = os.path.join("icons", "save.svg")
-        self.btn_save = (
-            QPushButton(QIcon(icon_path).pixmap(16, 16), " 保存")
-            if os.path.isfile(icon_path)
-            else QPushButton("💾 保存")
-        )
+        self.btn_save = self._icon_button("save.svg", t("detail.btn_save"), "💾")
         self.btn_save.setProperty("variant", "primary")
         self.btn_save.clicked.connect(self.save_edits)
         self.btn_save.setVisible(False)  # 初期状態は非表示
         kv_header_layout.addWidget(self.btn_save)
 
         kv_layout.addLayout(kv_header_layout)
-        
+
         self.table_widget = QTableWidget(0, 2)
         self.table_widget.setShowGrid(False)
         self.table_widget.verticalHeader().setVisible(False)
-        self.table_widget.setHorizontalHeaderLabels(["キー (Key)", "値 (Value)"])
+        self.table_widget.setHorizontalHeaderLabels([t("detail.col_key"), t("detail.col_value")])
         self.table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table_widget.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -116,39 +108,30 @@ class DetailPanel(QWidget):
         json_container = QWidget()
         json_layout = QVBoxLayout(json_container)
         json_layout.setContentsMargins(0, 2, 0, 0)
-        
+
         json_header_layout = QHBoxLayout()
         json_header_layout.setContentsMargins(2, 0, 0, 0)
         json_header_layout.setSpacing(6)
 
-        # 1. アイコンの追加
         json_icon_label = QLabel()
         json_icon_path = os.path.join("icons", "file-braces.svg")
         if os.path.exists(json_icon_path):
             json_icon_label.setPixmap((theme.icon("file-braces.svg") or QIcon(json_icon_path)).pixmap(16, 16))
         json_header_layout.addWidget(json_icon_label)
 
-        # 2. タイトルテキスト
-        json_title_label = QLabel("該当箇所の生 JSON (オンデマンド生成)")
+        json_title_label = QLabel(t("detail.json_title"))
         json_title_label.setStyleSheet("font-weight: bold;")
         json_header_layout.addWidget(json_title_label)
 
-        # スペーサーで左側と右側を分離
         json_header_layout.addStretch()
-        
-        # 3. 全文表示ボタン
-        icon_path = os.path.join("icons", "text-search.svg")
-        self.btn_full_text = (
-            QPushButton(QIcon(icon_path).pixmap(16, 16), " 全文を別窓で表示")
-            if os.path.isfile(icon_path)
-            else QPushButton("🔍 全文を別窓で表示")
-        )
+
+        self.btn_full_text = self._icon_button("text-search.svg", t("detail.btn_full_text"), "🔍")
         self.btn_full_text.setEnabled(False)
         self.btn_full_text.clicked.connect(self.show_full_text_dialog)
         json_header_layout.addWidget(self.btn_full_text)
-        
+
         json_layout.addLayout(json_header_layout)
-        
+
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setFont(theme.mono_font(10))
@@ -162,12 +145,12 @@ class DetailPanel(QWidget):
         indent = "    " * depth
 
         if isinstance(data, dict):
-            # ▼ ルート階層（depth == 0）の場合、表示順の優先リストを適用する
+            # ルート階層（depth == 0）の場合、表示順の優先リストを適用する
             if depth == 0:
                 priority_keys = PACKAGE_PRIORITY_KEYS
                 # 優先リストにあるキーを順番通りに、リストにない残りのキーは後ろにアルファベット順で配置
                 keys = sorted(
-                    data.keys(), 
+                    data.keys(),
                     key=lambda k: (priority_keys.index(k) if k in priority_keys else 999, k)
                 )
             else:
@@ -181,7 +164,7 @@ class DetailPanel(QWidget):
                     rows.extend(self._flatten_properties(val, depth=depth + 1))
                 else:
                     rows.append((display_key, str(val)))
-                    
+
         elif isinstance(data, list):
             for idx, val in enumerate(data):
                 display_key = f"{indent}[{idx}]"
@@ -190,7 +173,7 @@ class DetailPanel(QWidget):
                     rows.extend(self._flatten_properties(val, depth=depth + 1))
                 else:
                     rows.append((display_key, str(val)))
-        
+
         return rows
 
     def _is_editable(self, node) -> bool:
@@ -201,45 +184,41 @@ class DetailPanel(QWidget):
         """現在のノードに応じて「編集」ボタンの有効/無効とツールチップを切り替える"""
         editable = self._is_editable(self.current_node)
         self.btn_edit.setEnabled(editable)
-        self.btn_edit.setToolTip("" if editable else self.NOT_EDITABLE_TOOLTIP)
+        self.btn_edit.setToolTip("" if editable else t("detail.not_editable_tip"))
 
     def update_display(self, node: SBOMNode):
         self.current_node = node
         self._update_edit_button_state()
         # 編集キャンセルやリセット用にディープコピーを保持しておく
-        import copy
         self.original_properties_backup = copy.deepcopy(node.properties)
-        
+
         self._load_table_data(node.properties)
 
     def _load_table_data(self, properties: dict):
         self.table_widget.setRowCount(0)
         self.current_node_name = self.current_node.name if self.current_node else ""
-        
+
         if properties:
+            muted = QColor(theme.tokens().text_muted)
             flattened_rows = self._flatten_properties(properties)
             self.table_widget.setRowCount(len(flattened_rows))
             for row_idx, (key, value) in enumerate(flattened_rows):
                 key_item = QTableWidgetItem(key)
                 val_item = QTableWidgetItem(value)
-                # 🔒 キー列（列0）は、どの状態でも絶対に編集不可にする
+                # キー列（列0）は、どの状態でも絶対に編集不可にする
                 key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                
-                # キー部分の色を少し変えるなどして「ここは編集できない」感を出すと親切です
-                key_item.setForeground(QColor(theme.tokens().text_muted))
+                key_item.setForeground(muted)           # 「ここは編集できない」感を出す
 
-                # ▼【新規】インデント等を除いた純粋なキー名を取得
+                # インデント等を除いた純粋なキー名を取得
                 clean_key = key.strip()
 
-                # 🔒【新規】「SPDXID」の行などの場合は、Value列も編集不可にする
+                # 「SPDXID」「checksums」「externalRefs」は Value 列も編集不可にする
                 if clean_key.lower() in {"spdxid", "checksums", "externalrefs"}:
                     val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                # elif value == "" and clean_key in ("[","]"):
-                #    val_item.setFlags(val_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
                 self.table_widget.setItem(row_idx, 0, key_item)
                 self.table_widget.setItem(row_idx, 1, val_item)
-        
+
             self.current_json_text = json.dumps(properties, indent=2, ensure_ascii=False, default=json_default)
             self.text_edit.setPlainText(self.current_json_text)
             self.btn_full_text.setEnabled(True)
@@ -262,14 +241,14 @@ class DetailPanel(QWidget):
     def show_full_text_dialog(self):
         if not self.current_json_text:
             return
-        
+
         dialog = FullTextDialog(
-            title=f"詳細データ全文: {self.current_node_name}",
+            title=t("detail.full_text_title", name=self.current_node_name),
             text=self.current_json_text,
             parent=self
         )
         dialog.exec()
-        
+
     def start_edit_mode(self):
         """編集モードを開始する"""
         if not self._is_editable(self.current_node):
@@ -284,17 +263,16 @@ class DetailPanel(QWidget):
 
         # テーブルを編集可能にする
         self.table_widget.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked | 
+            QTableWidget.EditTrigger.DoubleClicked |
             QTableWidget.EditTrigger.EditKeyPressed
         )
-        
-        # 編集モード中であることをわかりやすくするため、Value列（列1）の背景色を変更する
-        edit_bg_color = QColor(theme.tokens().warning_bg)  # 編集可能セルの背景
+
+        # 編集モード中であることをわかりやすくするため、編集可能な Value 列（列1）の背景色を変更する
+        edit_bg_color = QColor(theme.tokens().warning_bg)
         for row in range(self.table_widget.rowCount()):
             val_item = self.table_widget.item(row, 1)
-            if val_item:
-                if val_item.flags() & Qt.ItemFlag.ItemIsEditable:
-                    val_item.setBackground(edit_bg_color)
+            if val_item and (val_item.flags() & Qt.ItemFlag.ItemIsEditable):
+                val_item.setBackground(edit_bg_color)
 
     def reset_edits(self):
         """変更を破棄して元の状態に戻す"""
@@ -324,7 +302,7 @@ class DetailPanel(QWidget):
         try:
             changed = apply_flat_rows(work, rows)
         except ValueError as e:
-            QMessageBox.warning(self, "入力エラー", f"{e}\n\n入力を修正して、もう一度保存してください。")
+            QMessageBox.warning(self, t("detail.input_error_title"), t("detail.input_error", error=str(e)))
             return  # 編集モードは継続
 
         if changed:
@@ -339,9 +317,9 @@ class DetailPanel(QWidget):
 
         if changed:
             self.node_updated.emit(node)     # ツリー表示の同期・変更フラグ更新は親側で行う
-            QMessageBox.information(self, "完了", "プロパティの変更を反映しました。")
+            QMessageBox.information(self, t("detail.done_title"), t("detail.saved"))
         else:
-            QMessageBox.information(self, "完了", "変更はありませんでした。")
+            QMessageBox.information(self, t("detail.done_title"), t("detail.no_change"))
         self.end_edit_mode()
 
     @staticmethod

@@ -3,15 +3,16 @@
 # Copyright (c) 2026 XZ Manj
 
 import os
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, 
-    QPushButton, QApplication, QMessageBox, QLabel, QWidget
+    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QTextBrowser,
+    QPushButton, QApplication, QMessageBox, QLabel
 )
 from core import VERSION, COPYRIGHT
+from core.i18n import t
+from ui import theme
+
 
 class FullTextDialog(QDialog):
     """長文のテキストを大画面でスクロール表示・コピーするためのダイアログ"""
@@ -25,35 +26,35 @@ class FullTextDialog(QDialog):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setPlainText(text)
-        font = self.text_edit.font()
-        font.setFamily("Courier New")
-        self.text_edit.setFont(font)
+        self.text_edit.setFont(theme.mono_font(10))
         layout.addWidget(self.text_edit)
 
         btn_layout = QHBoxLayout()
-        btn_copy = QPushButton("📋 クリップボードにコピー")
+        btn_copy = QPushButton(t("dialogs.copy"))
         btn_copy.clicked.connect(self.copy_to_clipboard)
         btn_layout.addWidget(btn_copy)
-        
-        btn_close = QPushButton("閉じる")
+
+        btn_close = QPushButton(t("dialogs.close"))
         btn_close.clicked.connect(self.accept)
         btn_layout.addWidget(btn_close)
-        
+
         layout.addLayout(btn_layout)
 
     def copy_to_clipboard(self):
         QApplication.clipboard().setText(self.text_edit.toPlainText())
-        QMessageBox.information(self, "完了", "テキストをクリップボードにコピーしました。")
+        QMessageBox.information(self, t("dialogs.done_title"), t("dialogs.copied"))
+
 
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("About SBOMcraft")
-        self.resize(520, 450)  # アイコン追加に合わせて少しだけサイズを微調整
+        self.resize(520, 450)
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+        tok = theme.tokens()     # ※ 変数名を t にすると翻訳関数 t() を隠してしまうため tok とする
 
         # -------------------------------------------------------------
         # ヘッダーエリア（アイコンとタイトルを横に並べる）
@@ -62,48 +63,47 @@ class AboutDialog(QDialog):
         header_layout.setContentsMargins(10, 10, 10, 10)
         header_layout.setSpacing(15)
 
-        # 1. アイコンの読み込みと表示
         icon_label = QLabel()
-        icon_path = "SBOMCraft2-512.png" # 実行ディレクトリまたは適切なパスを指定してください
-        
+        icon_path = "SBOMCraft2-512.png"  # 実行ディレクトリまたは適切なパスを指定してください
+
         if os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             # 512pxだと少し大きすぎるため、ダイアログ用に64x64に綺麗に縮小します
-            scaled_pixmap = pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            scaled_pixmap = pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
+                                          Qt.TransformationMode.SmoothTransformation)
             icon_label.setPixmap(scaled_pixmap)
         else:
-            # 万が一画像が見つからない場合のフォールバック（不格好にならないように絵文字を表示）
+            # 画像が見つからない場合のフォールバック
             icon_label.setText("<span style='font-size: 32px;'>📦</span>")
-        
+
         header_layout.addWidget(icon_label)
 
-        # 2. アプリ名とバージョン情報のテキスト
- # ★【修正】ハードコードをやめ、インポートした変数を埋め込むように変更
         title_label = QLabel(
             "<div style='margin-top: 5px;'>"
-            "<h2 style='margin: 0; color: #2c3e50;'>SBOMCraft</h2>"
-            f"<p style='margin: 4px 0 0 0; color: #555;'><b>Version:</b> {VERSION}</p>"
+            f"<h2 style='margin: 0; color: {tok.text};'>SBOMCraft</h2>"
+            f"<p style='margin: 4px 0 0 0; color: {tok.text_muted};'><b>{t('about.version')}</b> {VERSION}</p>"
             "</div>"
         )
-        header_layout.addWidget(title_label, 1) # 1を指定して右側のスペースを引き伸ばす
+        header_layout.addWidget(title_label, 1)
 
         layout.addLayout(header_layout)
 
         # -------------------------------------------------------------
         # メインエリア（ライセンス・謝辞のテキストブラウザ）
+        # ライセンス名・著作権表記などの法的表記は翻訳せず、原文のまま表示する
         # -------------------------------------------------------------
         info_browser = QTextBrowser()
         info_browser.setOpenExternalLinks(True)
-        
-        about_html = """
-        <h3>📄 Software License</h3>
-                <p><b>SPDX-License-Identifier:</b> <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a></p>
-                <p>[COPYRIGHT_TEXT]</p>
-                
+
+        about_html = f"""
+        <h3>📄 {t('about.license_heading')}</h3>
+        <p><b>SPDX-License-Identifier:</b> <a href="https://spdx.org/licenses/Apache-2.0.html">Apache-2.0</a></p>
+        <p>[COPYRIGHT_TEXT]</p>
+
         <hr>
-        <h3>📦 Third-Party Licenses & Acknowledgements</h3>
-                <p>This software integrates and builds upon excellent tools provided by the open-source community:</p>
-        
+        <h3>📦 {t('about.third_party_heading')}</h3>
+        <p>{t('about.third_party_intro')}</p>
+
         <ul>
             <li>
                 <b>Python</b><br>
@@ -137,23 +137,18 @@ class AboutDialog(QDialog):
                 License: ISC License<br>
                 Copyright (c) 2026 Lucide Icons and Contributors<br>
             </li>
-        </ul>        
-        <p style="font-size: 11px; color: #666; margin-top: 15px;">
-        All other registered trademarks and copyrights are the property of their respective owners.
+        </ul>
+        <p style="font-size: 11px; color: {tok.text_muted}; margin-top: 15px;">
+        {t('about.trademarks')}
         </p>
         """
-    # HTML内の特定の文字列 [COPYRIGHT_TEXT] を一元管理の変数に置き換える
-        final_html = about_html.replace("[COPYRIGHT_TEXT]", COPYRIGHT)
-        info_browser.setHtml(final_html)
+        # HTML内の特定の文字列 [COPYRIGHT_TEXT] を一元管理の変数に置き換える
+        info_browser.setHtml(about_html.replace("[COPYRIGHT_TEXT]", COPYRIGHT))
         layout.addWidget(info_browser)
-
- #       info_browser.setHtml(about_html)
- #       layout.addWidget(info_browser)
 
         # -------------------------------------------------------------
         # フッターエリア（閉じるボタン）
         # -------------------------------------------------------------
-        btn_close = QPushButton("Close")
+        btn_close = QPushButton(t("dialogs.close"))
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close)
-        

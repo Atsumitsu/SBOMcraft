@@ -1,0 +1,21 @@
+{
+  "serializer.warn.required": "[{where}] The required field '{key}' is missing.",
+  "serializer.warn.spdx_version": "[Document] spdxVersion is not 'SPDX-2.3': {value}",
+  "serializer.warn.spdxid_missing": "[{where}] SPDXID is missing.",
+  "serializer.warn.spdxid_format": "[{where}] The SPDXID format is invalid: {id}",
+  "serializer.warn.spdxid_dup": "[{where}] Duplicate SPDXID: {id} (duplicates {other})",
+  "serializer.warn.files_analyzed": "[{where}] filesAnalyzed must be a boolean: {value}",
+  "serializer.warn.dangling_ref": "[{where}] {key} refers to an SPDXID that does not exist: {ref}",
+  "serializer.warn.licenseid_format": "[{where}] The licenseId format is invalid (LicenseRef-… is required): {id}",
+  "serializer.warn.truncated": "… (further warnings omitted because there are too many)",
+
+  "serializer.err.bool": "Enter true or false for a boolean value: {value}",
+  "serializer.err.int": "Enter an integer: {value}",
+  "serializer.err.float": "Enter a number: {value}",
+  "serializer.err.json_type": "Cannot serialize this type to JSON: {type}",
+
+  "compare.worker.load_failed": "Failed to load {label}: {error}",
+  "compare.worker.permission": "Cannot open the file. Make sure it is not open in another application.",
+
+  "parser.err.empty": "The file is empty."
+}

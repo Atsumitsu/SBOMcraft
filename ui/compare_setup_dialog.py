@@ -10,8 +10,9 @@ from PySide6.QtWidgets import (
     QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout,
 )
 
-from core.comparer import ALL_GROUPS, group_label, match_key_hint, match_key_label, MatchKey
+from core.comparer import ALL_GROUPS, MatchKey, group_label, match_key_hint, match_key_label
 from core.i18n import t
+
 
 class CompareSetupDialog(QDialog):
     """比較の条件（対象ファイル・突合キー・比較する項目）を選ぶダイアログ。
@@ -23,7 +24,7 @@ class CompareSetupDialog(QDialog):
                  ask_target: bool = True, target_text: str = "", start_dir: str = "",
                  mode: MatchKey = MatchKey.AUTO, groups: Optional[Iterable[str]] = None):
         super().__init__(parent)
-        self.setWindowTitle(title or t(...))
+        self.setWindowTitle(title or t("compare.setup.title"))
         self.setMinimumWidth(560)
         self._ask_target = ask_target
         self._start_dir = start_dir
@@ -60,7 +61,7 @@ class CompareSetupDialog(QDialog):
 
         self.hint_label = QLabel()
         self.hint_label.setWordWrap(True)
-        self.hint_label.setProperty("role", "muted")
+        self.hint_label.setProperty("role", "muted")        # 色はテーマ（QSS）に任せる
         layout.addWidget(self.hint_label)
 
         box = QGroupBox(t("compare.setup.fields"))

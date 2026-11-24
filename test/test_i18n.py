@@ -42,7 +42,9 @@ def _used_static_keys():
                     continue
                 fn = node.func
                 fname = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
-                idx = 0 if fname in ("t", "_bi") else 1 if fname == "t_in" else None
+                # t(key) / _bi(key) / _log_plain(key) / _warn_box(key) は第1引数、t_in(lang, key) / _log(level, key) は第2引数がキー
+                idx = (0 if fname in ("t", "_bi", "_log_plain", "_warn_box")
+                       else 1 if fname in ("t_in", "_log") else None)
                 if idx is None or len(node.args) <= idx:
                     continue
                 arg = node.args[idx]
@@ -72,6 +74,39 @@ class CatalogTest(unittest.TestCase):
         ja = _catalog("ja")
         missing = {k: v for k, v in _used_static_keys().items() if k not in ja}
         self.assertEqual(missing, {}, "カタログに無いキーが使われています")
+
+    def test_call_site_params_match_placeholders(self):
+        """t("キー", a=..., b=...) に渡すパラメータが、カタログの {a} {b} と過不足なく一致するか（**params の呼び出しは対象外）。"""
+        ja = _catalog("ja")
+        bad = []
+        for folder in ("core", "ui"):
+            base = os.path.join(ROOT, folder)
+            if not os.path.isdir(base):
+                continue
+            for name in sorted(os.listdir(base)):
+                if not name.endswith(".py") or (folder == "core" and name == "i18n.py"):
+                    continue
+                path = os.path.join(base, name)
+                with open(path, encoding="utf-8") as f:
+                    tree = ast.parse(f.read(), filename=path)
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    fn = node.func
+                    fname = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
+                    idx = 0 if fname in ("t", "_log_plain", "_warn_box") else 1 if fname == "_log" else None
+                    if idx is None or len(node.args) <= idx:
+                        continue
+                    arg = node.args[idx]
+                    if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)) or arg.value not in ja:
+                        continue
+                    if any(k.arg is None for k in node.keywords):
+                        continue
+                    passed = {k.arg for k in node.keywords} - {"gap"}
+                    needed = set(_PLACEHOLDER.findall(ja[arg.value]))
+                    if passed != needed:
+                        bad.append(f"{folder}/{name}:{node.lineno} {arg.value} 差: {sorted(passed ^ needed)}")
+        self.assertEqual(bad, [])
 
     def test_dynamic_keys_exist(self):
         ja = _catalog("ja")

@@ -6,41 +6,40 @@ import os
 import sys
 import html
 import traceback
-from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QColor, QIcon, QPixmap, QActionGroup
+from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer, QSize
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QActionGroup
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter, 
-    QVBoxLayout, QHBoxLayout, QLabel, QHeaderView, 
-    QStatusBar, QFileDialog, QMessageBox, QApplication,QDialog,QToolButton,QMenuBar, QToolButton, QMenu,
+    QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter,
+    QVBoxLayout, QHBoxLayout, QLabel, QHeaderView,
+    QStatusBar, QFileDialog, QMessageBox, QApplication, QDialog, QToolButton, QMenu,
     QProgressDialog
 )
 
+from core import i18n
+from core.i18n import t
 from core.parser import ParseWorker, SBOMNode
 from core.serializer import build_spdx_document, validate_spdx_document, write_json_atomic
-#from core.validator import SBOMValidator
+from ui.detail_panel import DetailPanel
+from ui.dialogs import AboutDialog
+from ui.spdx3_dialog import Spdx3ExportDialog
 from core.spdx3_exporter import convert_node_to_spdx3
 from core.converter import SPDXToCycloneDXConverter
 from core.validator_worker import ValidationWorker
 from core.license_manager import SPDXLicenseManager
+from ui.settings_dialog import SettingsDialog
+from ui.license_check_dialog import LicenseCheckDialog
 from core import VERSION
 from core.excel_io import export_packages, apply_changes
 from core.excel_worker import ExcelImportWorker
+from ui.excel_import_dialog import ExcelImportPreviewDialog
 from core.comparer import ALL_GROUPS, MatchKey
 from core.drop_plan import DropKind, plan_drop
 from core.compare_worker import CompareWorker
-from ui.detail_panel import DetailPanel
-from ui.dialogs import AboutDialog
-from ui.excel_import_dialog import ExcelImportPreviewDialog
-from ui.license_check_dialog import LicenseCheckDialog
-from ui.settings_dialog import SettingsDialog
-from ui.spdx3_dialog import Spdx3ExportDialog
 from ui.compare_dialog import SbomCompareDialog
 from ui.compare_setup_dialog import CompareSetupDialog
 from ui import theme
 from ui.widgets import ISSUE_ROLE, TreeIssueDelegate, strip_leading_emoji
 
-from core import i18n
-from core.i18n import t
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -62,12 +61,13 @@ class MainWindow(QMainWindow):
         self._compare_dialogs = []  # 開いている比較ウィンドウ（参照を保持する）
         self._compare_mode = self._load_compare_mode()
         self._compare_groups = self._load_compare_groups()
+        self.validation_worker = None
 
         # SPDX ライセンスマネージャーの初期化（ローカルキャッシュの読み込み）
         self.license_manager = SPDXLicenseManager()
 
         self.init_ui()
-        
+
         # ドラッグ＆ドロップ: 入力欄などが先にドロップを受けてパスを書き込まないよう、アプリ全体のフィルターで先に処理する
         self.setAcceptDrops(True)
         for w in self.findChildren(QWidget):          # 入力欄などが先にドロップを受けて、パスを書き込まないようにする
@@ -75,7 +75,29 @@ class MainWindow(QMainWindow):
         QApplication.instance().installEventFilter(self)
         self._warn_if_elevated()
         self.restore_window_state()
-        self.validator_thread = None
+
+    # ------------------------------------------------------------------
+    # コンソール（ログ）出力。色はテーマに追従し、文言は t() で翻訳する
+    # ------------------------------------------------------------------
+    _LOG_TAGS = {"info": "[INFO]", "success": "[SUCCESS]", "warn": "[WARN]", "error": "[ERROR]"}
+
+    def _log_html(self, level: str, body_html: str, gap: bool = False):
+        """level: info / success / warn / error / muted。body_html は呼び出し側でエスケープ済みの HTML。"""
+        tok = theme.tokens()
+        color = {"info": tok.info_fg, "success": tok.success_fg, "warn": tok.warning_fg,
+                 "error": tok.danger_fg, "muted": tok.text_muted}[level]
+        tag = self._LOG_TAGS.get(level)
+        head = f"<b>{tag}</b> " if tag else ""
+        self.compliance_report.append(("<br>" if gap else "") + f"<font color='{color}'>{head}{body_html}</font>")
+
+    def _log(self, level: str, key: str, /, *, gap: bool = False, **params):
+        self._log_html(level, html.escape(t(key, **params)), gap)
+
+    def _log_plain(self, key: str, /, **params):
+        self.compliance_report.append(html.escape(t(key, **params)))
+
+    def _warn_box(self, key: str, /, **params):
+        QMessageBox.warning(self, t("main.dlg.warning"), t(key, **params))
 
     def init_ui(self):
         self._menu_buttons = []      # テーマ切替時にアイコンを塗り直すために保持
@@ -84,11 +106,10 @@ class MainWindow(QMainWindow):
         # -------------------------------------------------------------
         menu_toolbar = self.addToolBar("MenuToolbar")
         menu_toolbar.setMovable(False)
-        from PySide6.QtCore import QSize
         menu_toolbar.setIconSize(QSize(16, 16))
         menu_toolbar.setObjectName("MenuToolbar")
 
-        # 💡 ボタンとメニューをまとめて生成する保守しやすいヘルパー関数
+        # ボタンとメニューをまとめて生成するヘルパー関数
         def add_menu_button(title: str, icon_filename: str, menu: QMenu) -> QToolButton:
             btn = QToolButton(self)
             btn.setText(title)
@@ -102,111 +123,107 @@ class MainWindow(QMainWindow):
             self._menu_buttons.append((btn, icon_filename))
             return btn
 
-        # --- File メニュー用ボタンの作成 ---
-        # ボタンを押したときに展開されるポップアップメニューを作成
+        # --- File メニュー ---
         file_menu = QMenu(self)
 
         open_icon = theme.icon("book-open.svg") or QIcon(os.path.join("icons", "book-open.svg"))
-        open_action = file_menu.addAction(open_icon, "Open SBOM JSON")
-        open_action.setShortcut("Ctrl+O") # ショートカットキーも追加
+        open_action = file_menu.addAction(open_icon, t("main.menu.open"))
+        open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self.open_file)
 
-        theme_menu = file_menu.addMenu("テーマ")
-        theme_group = QActionGroup(self)
-        theme_group.setExclusive(True)
-        for mode_key, mode_label in (("auto", "OS の設定に合わせる"), ("light", "ライト"), ("dark", "ダーク")):
-            act = theme_menu.addAction(mode_label)
-            act.setCheckable(True)
-            act.setChecked(theme.mode() == mode_key)
-            theme_group.addAction(act)
-            act.triggered.connect(lambda _checked=False, m=mode_key: self._set_theme_mode(m))
-        
-        file_menu.addSeparator() # 区切り線
-
-        # ▼ 追加: 設定画面を開くアクション
-        settings_action = file_menu.addAction("Preferences...")
-        settings_action.setShortcut("Ctrl+,")
-        settings_action.triggered.connect(self.show_settings_dialog)
-
-        file_menu.addSeparator() # 区切り線
-        # 上書き保存アクション
-        save_action = file_menu.addAction("上書き保存(&S)")
-        save_action.setShortcut("Ctrl+S") # Ctrl+S
+        file_menu.addSeparator()
+        save_action = file_menu.addAction(t("main.menu.save"))
+        save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self.save_file)
 
-        # 別名保存アクション
-        save_as_action = file_menu.addAction("名前を付けて保存(&A)...")
+        save_as_action = file_menu.addAction(t("main.menu.save_as"))
         save_as_action.setShortcut("Ctrl+Shift+S")
         save_as_action.triggered.connect(self.save_file_as)
 
         # --- Excel 連携（Packages の一括編集） ---
         file_menu.addSeparator()
-        excel_menu = file_menu.addMenu("Excel 連携")
-        self.act_excel_export = excel_menu.addAction("Packages を Excel に出力...")
+        excel_menu = file_menu.addMenu(t("main.menu.excel"))
+        self.act_excel_export = excel_menu.addAction(t("main.menu.excel_export"))
         self.act_excel_export.triggered.connect(self.export_packages_to_excel)
-        self.act_excel_import = excel_menu.addAction("Excel から Packages を取り込み...")
+        self.act_excel_import = excel_menu.addAction(t("main.menu.excel_import"))
         self.act_excel_import.triggered.connect(self.import_packages_from_excel)
 
         # --- SBOM の比較 ---
         file_menu.addSeparator()
-        self.act_compare = file_menu.addAction("別の SBOM と比較...")
+        self.act_compare = file_menu.addAction(t("main.menu.compare"))
         self.act_compare.triggered.connect(self.compare_with_another_sbom)
-        self.act_compare_saved = file_menu.addAction("保存前の変更を確認（ディスク上のファイルと比較）")
+        self.act_compare_saved = file_menu.addAction(t("main.menu.compare_saved"))
         self.act_compare_saved.triggered.connect(self.compare_with_saved_file)
-               
 
-        file_menu.addSeparator() # 区切り線
+        file_menu.addSeparator()
+
+        theme_menu = file_menu.addMenu(t("main.menu.theme"))
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+        for mode_key, label_key in (("auto", "main.theme.auto"), ("light", "main.theme.light"),
+                                    ("dark", "main.theme.dark")):
+            act = theme_menu.addAction(t(label_key))
+            act.setCheckable(True)
+            act.setChecked(theme.mode() == mode_key)
+            theme_group.addAction(act)
+            act.triggered.connect(lambda _checked=False, m=mode_key: self._set_theme_mode(m))
+
+        # 言語（変更は再起動後に反映）
         lang_menu = file_menu.addMenu(t("menu.language"))
         lang_group = QActionGroup(self)
         lang_group.setExclusive(True)
-        current = str(self.settings.value("language", "auto"))
+        current_setting = str(self.settings.value("language", "auto"))
         for code, label in [("auto", t("menu.language.auto"))] + i18n.available_languages():
             act = lang_menu.addAction(label)
             act.setCheckable(True)
-            act.setChecked(current == code)
+            act.setChecked(current_setting == code)
             lang_group.addAction(act)
-            act.triggered.connect(lambda _c=False, c=code: self._set_language(c))
+            act.triggered.connect(lambda _checked=False, c=code: self._set_language(c))
 
-        file_menu.addSeparator() # 区切り線
+        file_menu.addSeparator()
 
-        exit_action = file_menu.addAction("Exit")
+        settings_action = file_menu.addAction(t("main.menu.preferences"))
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self.show_settings_dialog)
+
+        exit_action = file_menu.addAction(t("main.menu.exit"))
         exit_action.setShortcut("Alt+F4")
-        exit_action.triggered.connect(self.close) # 閉じるイベントを呼ぶ
+        exit_action.triggered.connect(self.close)
 
-        add_menu_button("  File", "folder.svg", file_menu)
+        add_menu_button("  " + t("main.menu.file_button"), "folder.svg", file_menu)
 
-# --- 2. Validation メニュー ---
+        # --- 2. Validation メニュー ---
         validation_menu = QMenu(self)
-        self.act_license_check = validation_menu.addAction("License Check")
+        self.act_license_check = validation_menu.addAction(t("main.menu.license_check"))
         self.act_license_check.triggered.connect(self.open_license_check_dialog)
-        
+
         validation_menu.addSeparator()
-        
-        cisa_menu = validation_menu.addMenu("CISA")
-        self.act_cisa_custom = cisa_menu.addAction("Custom CISA2026")
+
+        cisa_menu = validation_menu.addMenu(t("main.menu.cisa"))
+        self.act_cisa_custom = cisa_menu.addAction(t("main.menu.cisa_custom"))
         self.act_cisa_custom.triggered.connect(lambda: self.trigger_validation("CISA2026"))
-        
-        add_menu_button("  Validation", "text-search.svg", validation_menu)
+
+        add_menu_button("  " + t("main.menu.validation_button"), "text-search.svg", validation_menu)
 
         # --- 3. Converter メニュー ---
         converter_menu = QMenu(self)
-        self.action_export_spdx3ld = converter_menu.addAction("Export to SPDX 3.0 (JSON-LD)")
-        self.action_export_cdx = converter_menu.addAction("Export to CycloneDX")
+        self.action_export_spdx3ld = converter_menu.addAction(t("main.menu.export_spdx3"))
+        self.action_export_cdx = converter_menu.addAction(t("main.menu.export_cdx"))
         self.action_export_spdx3ld.triggered.connect(self.on_export_spdx3_triggered)
         self.action_export_cdx.triggered.connect(self.export_to_cyclonedx)
 
         self.action_export_cdx.setEnabled(False)
         self.action_export_spdx3ld.setEnabled(False)
         self.set_validation_menu_enabled(False)
-        
-        add_menu_button("  Converter", "refresh-cw.svg", converter_menu)
+
+        add_menu_button("  " + t("main.menu.converter_button"), "refresh-cw.svg", converter_menu)
 
         # --- 4. Help メニュー ---
         help_menu = QMenu(self)
-        about_action = help_menu.addAction("About")
+        about_action = help_menu.addAction(t("main.menu.about"))
         about_action.triggered.connect(self.show_about_dialog)
-        
-        add_menu_button("  Help", "file-question-mark.svg", help_menu)
+
+        add_menu_button("  " + t("main.menu.help_button"), "file-question-mark.svg", help_menu)
 
         # -------------------------------------------------------------
         # 2. メインレイアウト（スプリッター構造）
@@ -226,7 +243,7 @@ class MainWindow(QMainWindow):
         self.tree_view.setUniformRowHeights(True)
         self.tree_view.setIconSize(QSize(16, 16))
 
-        # ▼ ツリービュー専用のキープレスイベントを動的にオーバーライド
+        # ツリービュー専用のキープレスイベントを動的にオーバーライド
         def custom_tree_key_press(event):
             text = event.text()
             if text and len(text) == 1:
@@ -235,11 +252,11 @@ class MainWindow(QMainWindow):
                     event.accept()
                     return
             QTreeView.keyPressEvent(self.tree_view, event)
-            
+
         self.tree_view.keyPressEvent = custom_tree_key_press
 
         self.tree_model = QStandardItemModel()
-        self.tree_model.setHorizontalHeaderLabels(["Name", "SPDXID"])
+        self.tree_model.setHorizontalHeaderLabels([t("main.tree.name"), t("main.tree.spdxid")])
         self.tree_view.setModel(self.tree_model)
         self.main_splitter.addWidget(self.tree_view)
 
@@ -251,37 +268,33 @@ class MainWindow(QMainWindow):
 
         self.vertical_splitter.addWidget(self.main_splitter)
 
-        # 下段ペイン：検証ログパネル
+        # 下段ペイン：コンソール
         compliance_container = QWidget()
         compliance_layout = QVBoxLayout(compliance_container)
         compliance_layout.setContentsMargins(2, 2, 2, 0)
-        
-        # ▼ アイコンとタイトルを横並びにするヘッダーレイアウト
+
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(2, 0, 0, 0)
-        header_layout.setSpacing(6) # アイコンと文字の間隔
+        header_layout.setSpacing(6)
 
         icon_label = QLabel()
-        icon_path = os.path.join("icons", "monitor.svg") # .png の場合は拡張子を変更
+        icon_path = os.path.join("icons", "monitor.svg")
         if os.path.exists(icon_path):
-            # QIcon経由で読み込むと SVG でも PNG でも指定サイズに綺麗に描画されます
             icon_label.setPixmap((theme.icon("monitor.svg") or QIcon(icon_path)).pixmap(16, 16))
         header_layout.addWidget(icon_label)
 
-        my_label = QLabel("コンソール")
+        my_label = QLabel(t("main.console.title"))
         my_label.setProperty("role", "section")
         header_layout.addWidget(my_label)
-        header_layout.addStretch() # 左寄せにするためのスペーサー
+        header_layout.addStretch()
 
         compliance_layout.addLayout(header_layout)
-    
+
         self.compliance_report = QTextEdit()
         self.compliance_report.setReadOnly(True)
-        self.compliance_report.setPlaceholderText(
-            "メニューの「File」->「Open SBOM JSON」からファイルを読み込んでください。\n"
-            "SBOM (SPDX JSON) ファイルをウィンドウにドラッグ＆ドロップしても開けます。2 ファイルをドロップすると比較します。")
+        self.compliance_report.setPlaceholderText(t("main.console.placeholder"))
         compliance_layout.addWidget(self.compliance_report)
-        
+
         self.vertical_splitter.addWidget(compliance_container)
         self.vertical_splitter.setSizes([600, 200])
 
@@ -294,17 +307,7 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.setMinimumHeight(28)
-        self.status_bar.showMessage("Ready")
-
-    def _set_language(self, code: str):
-        if code == str(self.settings.value("language", "auto")):
-            return
-        self.settings.setValue("language", code)
-        new = i18n.normalize_language(code)
-        msgs = dict.fromkeys([i18n.t_in(new, "menu.language.restart_msg"),
-                            i18n.t_in(i18n.current_language(), "menu.language.restart_msg")])
-        QMessageBox.information(self, i18n.t_in(new, "menu.language.restart_title"), "\n\n".join(msgs))
-
+        self.status_bar.showMessage(t("main.status.ready"))
 
     def set_validation_menu_enabled(self, enabled: bool):
         """メニューの有効・無効を一括切り替え"""
@@ -326,6 +329,9 @@ class MainWindow(QMainWindow):
             and bool(self.current_file_path) and os.path.isfile(self.current_file_path)
         )
 
+    # ------------------------------------------------------------------
+    # 検証（Validation）
+    # ------------------------------------------------------------------
     def trigger_validation(self, profile: str):
         """メニューが選ばれた時の統合窓口（10MBチェックと警告を行う）"""
         if not self.current_file_path:
@@ -345,7 +351,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No
             )
             if reply == QMessageBox.StandardButton.No:
-                self.compliance_report.append(html.escape(t("validation.main.cancelled")))
+                self._log_plain("validation.main.cancelled")
                 return
 
         self.run_compliance_check(profile)
@@ -355,45 +361,25 @@ class MainWindow(QMainWindow):
         if not self.current_file_path:
             return
 
-        # 1. コンソール出力エリアの初期化
         self.compliance_report.clear()
-        self.compliance_report.append(html.escape(t("validation.main.started", profile=profile)))
+        self._log_plain("validation.main.started", profile=profile)
 
-        # 2. 二重実行を防止するためにメニューを一時無効化
+        # 二重実行を防止するためにメニューを一時無効化
         self.set_validation_menu_enabled(False)
 
-        # 3. バックグラウンドワーカー（検証ロジックは core/validator.py）
+        # バックグラウンドワーカー（検証ロジックは core/validator.py）
         sbom_dict = self.build_dict_from_root_node(self.current_root_node)
         self.validation_worker = ValidationWorker(sbom_data=sbom_dict, profile=profile)
-
-        # 4. リアルタイム進捗シグナルとUIスロットの接続
         self.validation_worker.progress_status.connect(self.on_validation_progress)
         self.validation_worker.finished_report.connect(self.on_validation_finished)
-
-        # 5. バックグラウンド処理の開始
         self.validation_worker.start()
 
     def on_validation_progress(self, message: str):
         """ワーカーから進捗状況（ログ）が送られてくる度にコンソールにリアルタイム追記"""
-        self.compliance_report.append(message)
-        # 自動で最新ログ（最下部）へスクロール
+        self.compliance_report.append(html.escape(message))
         self.compliance_report.ensureCursorVisible()
 
     @Slot(dict)
-    def on_validation_finished(self, result: dict):
-        """検証完了時に最終HTMLレポートを描画する"""
-        # HTML形式の検証結果レポートをレンダリングして表示
-        self.compliance_report.setHtml(result["report_html"])
-        
-        self._mark_validation_issues(result.get("error_packages", []))
-
-        # 無効化していたメニューやボタンの復元
-        if hasattr(self, 'set_validation_menu_enabled'):
-            self.set_validation_menu_enabled(True)
-
-        # メモリ解放・ワーカー参照のクリア
-        self.validation_worker = None
-
     def on_validation_finished(self, result: dict):
         """検証完了時に最終HTMLレポートを描画する"""
         self.compliance_report.setHtml(result["report_html"])
@@ -445,45 +431,93 @@ class MainWindow(QMainWindow):
             item.setToolTip(found[1] if found else "")
         self.tree_view.viewport().update()
 
+    # ------------------------------------------------------------------
+    # CycloneDX / SPDX 3.0 への変換
+    # ------------------------------------------------------------------
     def export_to_cyclonedx(self):
         """現在のSBOMデータをCycloneDX形式に変換して保存する"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            self._warn_box("main.warn.load_first")
             return
 
         # 保存先ファイルのデフォルト名を提案（元のファイル名 + _cyclonedx.json）
         default_save_path = os.path.splitext(self.current_file_path)[0] + "_cyclonedx.json"
-        
+
         output_cdx_path, _ = QFileDialog.getSaveFileName(
-            self, "Save CycloneDX JSON", default_save_path, "JSON Files (*.json);;All Files (*)"
+            self, t("main.dlg.cdx_save_title"), default_save_path, "JSON Files (*.json);;All Files (*)"
         )
 
         if not output_cdx_path:
             return  # ユーザーがキャンセルした場合は何もしない
 
-        self.compliance_report.append(f"<br>🔄 CycloneDXへの変換を開始します...<br><font color='gray'>出力先: {output_cdx_path}</font>")
-        self.status_bar.showMessage("Converting to CycloneDX...")
+        self._log("info", "main.log.cdx_started", gap=True)
+        self._log_html("muted", html.escape(t("main.log.output_to", path=output_cdx_path)))
+        self.status_bar.showMessage(t("main.status.cdx_converting"))
         QApplication.processEvents()  # UIを一度更新してメッセージを表示
 
         try:
-            # 1. コンバーターの初期化と実行（メモリ上のノードを渡す）
             converter = SPDXToCycloneDXConverter()
             cyclonedx_json_str = converter.convert(self.current_root_node)
 
-            # 2. 結果の書き出し
             with open(output_cdx_path, "w", encoding="utf-8") as f:
                 f.write(cyclonedx_json_str)
 
-            # 3. 成功時のUI更新
-            self.status_bar.showMessage(f"Successfully exported to {output_cdx_path}")
-            self.compliance_report.append("<font color='green'><b>[SUCCESS]</b> CycloneDXへの変換と保存が完了しました！</font>")
-            QMessageBox.information(self, "Success", "CycloneDX形式への変換・保存が完了しました。")
+            self.status_bar.showMessage(t("main.status.cdx_exported", path=output_cdx_path))
+            self._log("success", "main.log.cdx_done")
+            QMessageBox.information(self, t("main.dlg.success"), t("main.dlg.cdx_done"))
 
         except Exception as e:
-            self.status_bar.showMessage("Conversion failed.")
-            self.compliance_report.append(f"<font color='red'><b>[ERROR]</b> 変換失敗: {str(e)}</font>")
-            QMessageBox.critical(self, "Conversion Error", f"変換中にエラーが発生しました:\n{str(e)}")
+            self.status_bar.showMessage(t("main.status.cdx_failed"))
+            self._log("error", "main.log.cdx_failed", error=str(e))
+            QMessageBox.critical(self, t("main.dlg.cdx_error_title"), t("main.dlg.cdx_error", error=str(e)))
 
+    def on_export_spdx3_triggered(self):
+        """SPDX 3.0 エクスポートダイアログを開き、入力されたメタデータを基に変換・保存を実行する"""
+        if not self.current_root_node:
+            self._warn_box("main.warn.no_data_to_export")
+            return
+
+        # ルートノードの properties から既存メタデータを抽出して辞書を構築
+        root_props = getattr(self.current_root_node, "properties", {})
+        creation_info = root_props.get("creationInfo", {})
+        creators = creation_info.get("creators", [])
+
+        existing_meta = {
+            "document_name": root_props.get("name", ""),
+            "creators": creators,
+            "creator": creators[0] if creators else "",
+            "created": creation_info.get("created", ""),
+            "comment": root_props.get("comment", "") or creation_info.get("comment", ""),
+            "sbom_type": root_props.get("sbomType", ["analyzed"])[0] if isinstance(root_props.get("sbomType"), list) else root_props.get("sbomType", "analyzed"),
+            "data_license": root_props.get("dataLicense", "CC0-1.0")
+        }
+
+        dialog = Spdx3ExportDialog(existing_meta=existing_meta, parent=self)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            meta_data = dialog.get_input_data()
+
+            default_filename = "sbom_spdx3.jsonld"
+            if self.current_file_path:
+                base_name = os.path.splitext(os.path.basename(self.current_file_path))[0]
+                default_filename = f"{base_name}_spdx3.jsonld"
+
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, t("main.dlg.spdx3_save_title"), default_filename, "JSON-LD Files (*.jsonld *.json);;All Files (*)"
+            )
+
+            if file_path:
+                try:
+                    convert_node_to_spdx3(self.current_root_node, file_path, meta_data=meta_data)
+                    self._log("success", "main.log.spdx3_done", path=file_path)
+                    QMessageBox.information(self, t("main.dlg.success"), t("main.dlg.spdx3_done", path=file_path))
+                except Exception as e:
+                    self._log("error", "main.log.spdx3_failed", error=str(e))
+                    QMessageBox.critical(self, t("main.dlg.error"), t("main.dlg.spdx3_failed", error=str(e)))
+
+    # ------------------------------------------------------------------
+    # ウィンドウ状態・各種ダイアログ
+    # ------------------------------------------------------------------
     def restore_window_state(self):
         geometry = self.settings.value("geometry")
         if geometry:
@@ -520,14 +554,35 @@ class MainWindow(QMainWindow):
         dialog = AboutDialog(self)
         dialog.exec()
 
+    def show_settings_dialog(self):
+        """設定ダイアログを表示する"""
+        dialog = SettingsDialog(license_manager=self.license_manager, parent=self)
+        dialog.exec()
+
+    def open_license_check_dialog(self):
+        """ライセンスチェック詳細ダイアログを開く"""
+        if not self.current_root_node:
+            self._warn_box("main.warn.load_sbom_first")
+            return
+
+        dialog = LicenseCheckDialog(
+            root_node=self.current_root_node,
+            license_manager=self.license_manager,
+            parent=self
+        )
+        dialog.exec()
+
+    # ------------------------------------------------------------------
+    # ファイルを開く
+    # ------------------------------------------------------------------
     def open_file(self):
         if self._is_busy():
-            self.status_bar.showMessage("処理中のためファイルを開けません。完了してからやり直してください。", 5000)
+            self.status_bar.showMessage(t("main.status.busy_open"), 5000)
             return
         if not self._maybe_save_changes():   # 未保存の編集があれば先に確認
             return
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open SBOM JSON", self.last_dir, "JSON Files (*.json);;All Files (*)"
+            self, t("main.dlg.open_title"), self.last_dir, "JSON Files (*.json);;All Files (*)"
         )
         if not file_path:
             return
@@ -540,10 +595,10 @@ class MainWindow(QMainWindow):
         self.last_dir = os.path.dirname(file_path)
         self.settings.setValue("last_directory", self.last_dir)
         self.current_file_path = file_path
-        
+
         self.compliance_report.clear()
-        self.compliance_report.append("<font color='blue'><b>[INFO]</b> SBOMファイルの読み込みを開始しました...</font>")
-        self.compliance_report.append(f"<font color='gray'>File: {file_path}</font><br>")
+        self._log("info", "main.log.open_started")
+        self._log_html("muted", f"File: {html.escape(file_path)}<br>")
 
         self.tree_model.removeRows(0, self.tree_model.rowCount())
         self.detail_panel.clear_display()
@@ -559,7 +614,7 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(self.on_parse_progress)
         self.worker.finished.connect(self.on_parse_success)
         self.worker.error.connect(self.on_parse_error)
-        
+
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.thread.finished.connect(self.thread.deleteLater)
@@ -571,24 +626,27 @@ class MainWindow(QMainWindow):
     @Slot(int)
     def on_parse_progress(self, percent: int):
         if percent % 10 == 0 or percent == 99:
-            self.compliance_report.append(f"⏳ JSONパース中... {percent}%")
-        self.status_bar.showMessage(f"Parsing SBOM... {percent}%")
+            self._log_plain("main.log.parse_progress", pct=percent)
+        self.status_bar.showMessage(t("main.status.parsing", pct=percent))
 
     @Slot(object)
     def on_parse_success(self, root_node: SBOMNode):
         self._parse_busy = False
-        self.compliance_report.append("<br><font color='green'><b>[SUCCESS]</b> JSONのパースが完了しました。</font>")
-        self.compliance_report.append("🌿 ツリー画面を構築しています...")
-        
+        if root_node is None:        # キャンセルされた場合（ParseWorker は None を通知する）
+            self._after_open = None
+            return
+        self._log("success", "main.log.parse_done", gap=True)
+        self._log_plain("main.log.building_tree")
+
         QApplication.processEvents()
-        self.status_bar.showMessage("SBOM parsed. Building tree view...")
+        self.status_bar.showMessage(t("main.status.building_tree"))
         self.current_root_node = root_node
         self._set_modified(False)
         self._edit_revision = 0
-        
+
         self.tree_view.setUpdatesEnabled(False)
         self.tree_view.header().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        
+
         try:
             self.populate_tree(root_node, self.tree_model.invisibleRootItem())
             self.tree_view.expandToDepth(0)
@@ -599,9 +657,9 @@ class MainWindow(QMainWindow):
             self.tree_view.header().setSectionsMovable(True)
             self.tree_view.setColumnWidth(0, 450)
 
-        self.status_bar.showMessage(f"SBOM loaded successfully. File: {self.current_file_path}")
-        self.set_validation_menu_enabled(True) # 検証メニューを解禁
-        self.compliance_report.append("✅ ツリーの構築が完了しました！")
+        self.status_bar.showMessage(t("main.status.loaded", path=self.current_file_path))
+        self.set_validation_menu_enabled(True)  # 検証メニューを解禁
+        self._log_plain("main.log.tree_done")
 
         callback, self._after_open = self._after_open, None      # D&D の自動比較など、読み込み後に続けたい処理
         if callback:
@@ -611,28 +669,28 @@ class MainWindow(QMainWindow):
     def on_parse_error(self, error_msg: str):
         self._parse_busy = False
         self._after_open = None
-        self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> 読み込み失敗: {error_msg}</font>")
-        self.status_bar.showMessage(f"Error loading {self.current_file_path}: {error_msg}")
-        QMessageBox.critical(self, "Parser Error", f"An error occurred while parsing:\n{error_msg}") 
+        self._log("error", "main.log.parse_failed", gap=True, error=error_msg)
+        self.status_bar.showMessage(t("main.status.load_error", path=self.current_file_path, error=error_msg))
+        QMessageBox.critical(self, t("main.dlg.parser_error_title"), t("main.dlg.parser_error", error=error_msg))
 
     def populate_tree(self, node: SBOMNode, parent_item: QStandardItem):
         item_name = QStandardItem()
         self._apply_node_appearance(item_name, node)
         item_name.setData(node, Qt.ItemDataRole.UserRole)
-        item_name.setEditable(False)  # ▼ ダブルクリックでの編集を禁止
+        item_name.setEditable(False)  # ダブルクリックでの編集を禁止
 
         item_id = QStandardItem(node.spdx_id if node.spdx_id else "")
-        item_id.setEditable(False)    # ▼ ダブルクリックでの編集を禁止
-        
+        item_id.setEditable(False)
+
         parent_item.appendRow([item_name, item_id])
-        
-        # ▼ ルートノード（document）の直下にあるフォルダ群はソートせず、
-        #    それ以外のフォルダの中身（末端の項目）を名称（node.name）で昇順ソートする
+
+        # ルートノード（document）の直下にあるフォルダ群はソートせず、
+        # それ以外のフォルダの中身（末端の項目）を名称（node.name）で昇順ソートする
         if node.node_type == "document":
             children_to_process = node.children
         else:
             children_to_process = sorted(node.children, key=lambda x: x.name.lower())
-        
+
         for child in children_to_process:
             self.populate_tree(child, item_name)
 
@@ -660,18 +718,15 @@ class MainWindow(QMainWindow):
     def on_tree_item_clicked(self, index: QModelIndex):
         if not index.parent().isValid():
             # フォルダやドキュメント直下以外をクリックした場合のガード
-            # ※もし「編集中にルート側をクリックした場合」もガードしたい場合はここにチェックを入れます
             if getattr(self.detail_panel, "is_editing", False):
                 if not self._check_unsaved_changes():
                     return
             self.detail_panel.clear_display()
             return
 
-        # 💡 【追加】もし現在詳細パネルが編集モード中なら、移動前に確認ダイアログを表示
+        # 現在詳細パネルが編集モード中なら、移動前に確認ダイアログを表示
         if getattr(self.detail_panel, "is_editing", False):
             if not self._check_unsaved_changes():
-                # ユーザーが「キャンセル」を選んだ場合は、選択の移動を元のノードに戻す等の処理が必要ですが、
-                # シンプルに処理を中断してツリーの選択を戻す場合はインデックス制御を行います。
                 return
 
         model = self.tree_view.model()
@@ -690,110 +745,33 @@ class MainWindow(QMainWindow):
         """
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Question)
-        msg_box.setWindowTitle("未保存の変更")
-        msg_box.setText("プロパティが編集中です。\n変更を保存しますか？")
-        
-        # 💡 ボタンを定義して日本語のテキストをセットする
-        btn_save = msg_box.addButton("保存", QMessageBox.ButtonRole.AcceptRole)
-        btn_discard = msg_box.addButton("破棄", QMessageBox.ButtonRole.DestructiveRole)
-        btn_cancel = msg_box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
-        
+        msg_box.setWindowTitle(t("main.dlg.unsaved_title"))
+        msg_box.setText(t("main.dlg.editing_text"))
+
+        btn_save = msg_box.addButton(t("main.dlg.save"), QMessageBox.ButtonRole.AcceptRole)
+        btn_discard = msg_box.addButton(t("main.dlg.discard"), QMessageBox.ButtonRole.DestructiveRole)
+        msg_box.addButton(t("main.dlg.cancel"), QMessageBox.ButtonRole.RejectRole)
+
         msg_box.exec()
 
         clicked_button = msg_box.clickedButton()
 
         if clicked_button == btn_save:
-            # 1. 保存を実行してから移動を許可
-            self.detail_panel.save_edits()
+            self.detail_panel.save_edits()          # 保存してから移動を許可
             return True
         elif clicked_button == btn_discard:
-            # 2. 変更を破棄（リセット）して移動を許可
-            self.detail_panel.reset_edits()
+            self.detail_panel.reset_edits()         # 変更を破棄して移動を許可
             return True
         else:
-            # 3. キャンセル（移動しない）
-            return False
-    
-    # v0.6.2.0
-    def on_export_spdx3_triggered(self):
-        """SPDX 3.0 エクスポートダイアログを開き、入力されたメタデータを基に変換・保存を実行する"""
-        # 読み込まれているルートノードが存在するかチェック
-        if not hasattr(self, "current_root_node") or not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "エクスポートするSBOMデータが読み込まれていません。")
-            return
+            return False                            # キャンセル（移動しない）
 
-        # 1. ルートノードの properties から既存メタデータを抽出して辞書を構築
-        root_props = getattr(self.current_root_node, "properties", {})
-        creation_info = root_props.get("creationInfo", {})
-        creators = creation_info.get("creators", [])
-
-        existing_meta = {
-            "document_name": root_props.get("name", ""),
-            "creators": creators,
-            "creator": creators[0] if creators else "",
-            "created": creation_info.get("created", ""),
-            "comment": root_props.get("comment", "") or creation_info.get("comment", ""),
-            "sbom_type": root_props.get("sbomType", ["analyzed"])[0] if isinstance(root_props.get("sbomType"), list) else root_props.get("sbomType", "analyzed"),
-            "data_license": root_props.get("dataLicense", "CC0-1.0")
-        }
-
-        # 2. Spdx3ExportDialog を初期化（既存メタデータを渡して初期値を反映させる）
-        dialog = Spdx3ExportDialog(existing_meta=existing_meta, parent=self)
-        
-        if dialog.exec() == Spdx3ExportDialog.Accepted:
-            # 3. ダイアログで入力・編集されたメタデータを取得
-            meta_data = dialog.get_input_data()
-
-            # 4. 保存先ファイルダイアログの表示
-            default_filename = "sbom_spdx3.jsonld"
-            if hasattr(self, "current_file_path") and self.current_file_path:
-                base_name = os.path.splitext(os.path.basename(self.current_file_path))[0]
-                default_filename = f"{base_name}_spdx3.jsonld"
-
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save SPDX 3.0 JSON-LD", default_filename, "JSON-LD Files (*.jsonld *.json);;All Files (*)"
-            )
-            
-            if file_path:
-                try:
-                    # 5. エクスポート処理の実行
-                    convert_node_to_spdx3(self.current_root_node, file_path, meta_data=meta_data)
-                    
-                    if hasattr(self, "console"):
-                        self.console.append(f"Successfully exported to SPDX 3.0: {file_path}")
-                    QMessageBox.information(self, "Success", f"SPDX 3.0 へのエクスポートが完了しました:\n{file_path}")
-                    
-                except Exception as e:
-                    error_msg = f"Export failed: {str(e)}"
-                    if hasattr(self, "console"):
-                        self.console.append(error_msg)
-                    QMessageBox.critical(self, "Error", error_msg)
-    # 2026/10/10
-    def show_settings_dialog(self):
-        """設定ダイアログを表示する"""
-        dialog = SettingsDialog(license_manager=self.license_manager, parent=self)
-        dialog.exec()
-
-    def open_license_check_dialog(self):
-        """ライセンスチェック詳細ダイアログを開く"""
-        if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", t("main.warn.load_sbom_first"))
-            return
-
-        dialog = LicenseCheckDialog(
-            root_node=self.current_root_node,
-            license_manager=self.license_manager,
-            parent=self
-        )
-        dialog.exec()
-
-#2026-11-14
+    # ------------------------------------------------------------------
+    # ツリー内のキー入力ジャンプ
+    # ------------------------------------------------------------------
     def keyPressEvent(self, event):
-        # tree_view にフォーカスがあるとき、または通常のキー入力時
         # 1文字の英数字（あるいは全角英数字）が押されたかを判定
         text = event.text()
         if text and len(text) == 1 and (text.isalnum() or ord(text) > 127):
-            # 全角英数字を半角に、大文字を小文字に正規化
             search_char = self._normalize_search_char(text)
             if search_char:
                 if self.jump_to_node_starting_with(search_char):
@@ -803,7 +781,6 @@ class MainWindow(QMainWindow):
 
     def _normalize_search_char(self, char: str) -> str:
         """全角英数字を半角小文字に変換する"""
-        # 全角英字 (Ａ-Ｚ, ａ-ｚ) や全角数字 (０-９) を半角に変換
         code = ord(char)
         if 0xFF21 <= code <= 0xFF3A:  # Ａ-Ｚ
             char = chr(code - 0xFEE0)
@@ -816,23 +793,20 @@ class MainWindow(QMainWindow):
     def jump_to_node_starting_with(self, char: str) -> bool:
         """ツリーモデルを走査し、指定された文字で始まるノードへフォーカスを移動する"""
         model = self.tree_model
-        
-        # 再帰的にアイテムを探索するヘルパー関数
+
         def search_items(parent_index: QModelIndex):
             for row in range(model.rowCount(parent_index)):
                 index = model.index(row, 0, parent_index)
                 item = model.itemFromIndex(index)
                 if item:
                     node = item.data(Qt.ItemDataRole.UserRole)
-                    if node and node.node_type == "package":  # 主にパッケージなどのノードを対象
+                    if node and node.node_type == "package":
                         node_name = node.name.lower()
                         # 絵文字やスペースを除外して純粋な名称の先頭文字と比較
-                        # (例: "📦 PySide6" なら 'p' から始まるかチェック)
                         clean_name = "".join([c for c in node_name if c.isalnum()]).lower()
                         if clean_name.startswith(char):
                             return index
-                
-                # 子階層がある場合は再帰探索
+
                 if model.hasChildren(index):
                     found = search_items(index)
                     if found.isValid():
@@ -843,11 +817,10 @@ class MainWindow(QMainWindow):
         if target_index.isValid():
             self.tree_view.setCurrentIndex(target_index)
             self.tree_view.scrollTo(target_index, QTreeView.ScrollHint.PositionAtCenter)
-            # 選択されたノードの詳細パネルも同時に更新させる
             self.on_tree_item_clicked(target_index)
             return True
         return False
-    
+
     def build_dict_from_root_node(self, root_node: SBOMNode) -> dict:
         """メモリ上の root_node ツリーから、現在の編集内容を反映した SPDX 2.3 辞書を再構築する"""
         return build_spdx_document(root_node)
@@ -872,7 +845,6 @@ class MainWindow(QMainWindow):
             if item:
                 node = item.data(Qt.ItemDataRole.UserRole)
                 if node == updated_node:
-#                    item.setText(updated_node.name)
                     self._apply_node_appearance(item, updated_node)
                     return
 
@@ -884,10 +856,9 @@ class MainWindow(QMainWindow):
                 if item:
                     node = item.data(Qt.ItemDataRole.UserRole)
                     if node == updated_node:
-#                        item.setText(updated_node.name)
                         self._apply_node_appearance(item, updated_node)
                         return True
-                
+
                 if model.hasChildren(index):
                     if find_and_update(index):
                         return True
@@ -901,7 +872,7 @@ class MainWindow(QMainWindow):
     def export_packages_to_excel(self):
         """全 Packages のスカラー項目と checksums / externalRefs を Excel(.xlsx) に出力する"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", t("main.warn.load_first"))
+            self._warn_box("main.warn.load_first")
             return
         if not self._commit_pending_edit():      # 編集中の内容を先に確定してから出力する
             return
@@ -934,23 +905,19 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
         if error:
-            self.compliance_report.append(
-                f"<br><font color='red'><b>[ERROR]</b> "
-                f"{html.escape(t('excel.main.export_failed_log', error=error))}</font>")
+            self._log("error", "excel.main.export_failed_log", gap=True, error=error)
             QMessageBox.critical(self, t("excel.main.export_error_title"), error)
             return
         extra = "".join(t("excel.main.export_extra", sheet=sheet, n=n) for sheet, n in result.list_rows.items())
-        done = t("excel.main.export_done", count=result.package_count, columns=result.column_count, extra=extra)
-        self.compliance_report.append(
-            f"<br><font color='green'><b>[SUCCESS]</b> {html.escape(done)}</font><br>"
-            f"<font color='gray'>File: {html.escape(path)}</font>"
-        )
+        self._log("success", "excel.main.export_done", gap=True,
+                  count=result.package_count, columns=result.column_count, extra=extra)
+        self._log_html("muted", f"File: {html.escape(path)}")
         self.status_bar.showMessage(t("excel.main.status_exported", path=path))
 
     def import_packages_from_excel(self):
         """編集済みの Excel を読み込み、差分をプレビューしてから SBOM に反映する"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", t("main.warn.load_first"))
+            self._warn_box("main.warn.load_first")
             return
         if self._excel_busy:
             return
@@ -968,9 +935,8 @@ class MainWindow(QMainWindow):
 
         self._excel_busy = True
         self.set_validation_menu_enabled(False)       # 取り込み中は他の操作を止める
-        self.compliance_report.append(
-            f"<br><font color='blue'><b>[INFO]</b> {html.escape(t('excel.main.import_started'))}</font>")
-        self.compliance_report.append(f"<font color='gray'>File: {html.escape(path)}</font>")
+        self._log("info", "excel.main.import_started", gap=True)
+        self._log_html("muted", f"File: {html.escape(path)}")
 
         progress = QProgressDialog(t("excel.main.progress_label"), t("excel.main.cancel"), 0, 100, self)
         progress.setWindowTitle(t("excel.main.progress_title"))
@@ -1001,7 +967,6 @@ class MainWindow(QMainWindow):
 
         self.excel_thread.start()
 
-
     def _finish_excel_import_ui(self):
         """進捗ダイアログを閉じ、メニューを元に戻す"""
         if self._excel_progress is not None:
@@ -1024,9 +989,7 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def on_excel_import_error(self, error_msg: str):
         self._finish_excel_import_ui()
-        self.compliance_report.append(
-            f"<br><font color='red'><b>[ERROR]</b> "
-            f"{html.escape(t('excel.main.import_failed_log', error=error_msg))}</font>")
+        self._log("error", "excel.main.import_failed_log", gap=True, error=error_msg)
         self.status_bar.showMessage(t("excel.main.status_import_failed"))
         QMessageBox.critical(self, t("excel.main.import_error_title"), error_msg)
 
@@ -1034,15 +997,13 @@ class MainWindow(QMainWindow):
     def on_excel_import_finished(self, plan):
         self._finish_excel_import_ui()
         if plan is None:
-            self.compliance_report.append(
-                f"<font color='gray'>[INFO] {html.escape(t('excel.main.cancelled_log'))}</font>")
+            self._log_html("muted", "[INFO] " + html.escape(t("excel.main.cancelled_log")))
             self.status_bar.showMessage(t("excel.main.status_cancelled"))
             return
 
         dialog = ExcelImportPreviewDialog(plan, os.path.basename(self._excel_import_path), self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            self.compliance_report.append(
-                f"<font color='gray'>[INFO] {html.escape(t('excel.main.aborted_log'))}</font>")
+            self._log_html("muted", "[INFO] " + html.escape(t("excel.main.aborted_log")))
             return
         self._apply_excel_changes(plan, dialog.selected_changes())
 
@@ -1064,20 +1025,15 @@ class MainWindow(QMainWindow):
             self._set_modified(True)
 
         n_list = sum(1 for c in result.applied if c.kind == "list")
-        applied = t("excel.main.applied_log", items=len(result.applied), packages=len(result.nodes), lists=n_list)
-        self.compliance_report.append(
-            f"<br><font color='green'><b>[SUCCESS]</b> {html.escape(applied)}</font>")
+        self._log("success", "excel.main.applied_log", gap=True,
+                  items=len(result.applied), packages=len(result.nodes), lists=n_list)
         if plan.error_count or plan.warning_count:
-            check = t("excel.main.check_log", errors=plan.error_count, warnings=plan.warning_count)
-            self.compliance_report.append(f"<font color='gray'>{html.escape(check)}</font>")
+            self._log_html("muted", html.escape(
+                t("excel.main.check_log", errors=plan.error_count, warnings=plan.warning_count)))
         for ch, reason in result.skipped:
-            self.compliance_report.append(
-                f"<font color='orange'>[WARN] {html.escape(ch.spdx_id)} / {html.escape(ch.field)}: "
-                f"{html.escape(reason)}</font>"
-            )
+            self._log_html("warn", f"{html.escape(ch.spdx_id)} / {html.escape(ch.field)}: {html.escape(reason)}")
         if result.applied:
-            self.compliance_report.append(
-                f"<font color='gray'>{html.escape(t('excel.main.stale_validation'))}</font>")
+            self._log_html("muted", html.escape(t("excel.main.stale_validation")))
         self.status_bar.showMessage(t("excel.main.status_applied", items=len(result.applied)))
 
     def _refresh_tree_items(self, nodes):
@@ -1094,15 +1050,11 @@ class MainWindow(QMainWindow):
                     continue
                 node = item.data(Qt.ItemDataRole.UserRole)
                 if node is not None and id(node) in targets:
-#                    item.setText(node.name)
                     self._apply_node_appearance(item, node)
                     del targets[id(node)]
                 if item.rowCount():
                     stack.append(item)
 
-    # ------------------------------------------------------------------
-    # 保存処理
-    # ------------------------------------------------------------------
     # ------------------------------------------------------------------
     # SBOM の比較
     # ------------------------------------------------------------------
@@ -1129,21 +1081,24 @@ class MainWindow(QMainWindow):
 
     def _compare_precheck(self) -> bool:
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "先にSPDX JSONファイルを読み込んでください。")
+            self._warn_box("main.warn.load_first")
             return False
         if self._compare_busy or self._excel_busy:
             return False
         return self._commit_pending_edit()      # 編集中のプロパティがあれば先に保存/破棄を確認
 
+    def _untitled(self) -> str:
+        return os.path.basename(self.current_file_path) or t("main.compare.untitled")
+
     def compare_with_another_sbom(self):
         """現在開いている SBOM（未保存の編集を含む）を基準(A)に、選んだファイル(B)と比較する"""
         if not self._compare_precheck():
             return
-        name = os.path.basename(self.current_file_path) or "(無題)"
+        name = self._untitled()
         label_a = self._current_compare_label()
-        base_text = (f"{name}（現在開いている SBOM。未保存の編集内容を含みます）" if self._modified
-                     else f"{name}（現在開いている SBOM）")
-        dlg = CompareSetupDialog(self, title="別の SBOM と比較", base_text=base_text, ask_target=True,
+        base_text = (t("main.compare.base_modified", name=name) if self._modified
+                     else t("main.compare.base_current", name=name))
+        dlg = CompareSetupDialog(self, title=t("main.compare.title_other"), base_text=base_text, ask_target=True,
                                  start_dir=self.last_dir, mode=self._compare_mode, groups=self._compare_groups)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1159,31 +1114,32 @@ class MainWindow(QMainWindow):
             return
         path = self.current_file_path
         if not path or not os.path.isfile(path):
-            QMessageBox.information(self, "比較", "ディスク上に保存済みのファイルがありません。")
+            QMessageBox.information(self, t("main.compare.box_title"), t("main.compare.no_saved_file"))
             return
         if not self._modified:
-            QMessageBox.information(self, "比較", "未保存の変更はありません。")
+            QMessageBox.information(self, t("main.compare.box_title"), t("main.compare.no_changes"))
             return
         name = os.path.basename(path)
-        dlg = CompareSetupDialog(self, title="保存前の変更を確認", base_text=f"{name}（ディスク上のファイル）",
-                                 target_text=f"{name}（現在の編集内容）", ask_target=False,
+        dlg = CompareSetupDialog(self, title=t("main.compare.title_saved"),
+                                 base_text=t("main.compare.base_disk", name=name),
+                                 target_text=t("main.compare.target_editing", name=name), ask_target=False,
                                  mode=self._compare_mode, groups=self._compare_groups)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         mode, groups = dlg.match_mode(), dlg.selected_groups()
         self._remember_compare_options(mode, groups)
-        self._start_compare(path, f"{name} (ディスク上)", self.current_root_node, f"{name} (編集中)", mode, groups)
+        self._start_compare(path, t("main.compare.label_disk", name=name),
+                            self.current_root_node, t("main.compare.label_editing", name=name), mode, groups)
 
     def _start_compare(self, source_a, label_a: str, source_b, label_b: str, mode, groups):
         """source は読み込み済みのルートノード、または SBOM JSON のパス。読み込みと比較は別スレッドで行う"""
         self._compare_busy = True
         self.set_validation_menu_enabled(False)       # 比較中は他の操作を止める
-        self.compliance_report.append("<br><font color='blue'><b>[INFO]</b> SBOM の比較を開始しました...</font>")
-        self.compliance_report.append(
-            f"<font color='gray'>A(旧): {html.escape(label_a)} / B(新): {html.escape(label_b)}</font>")
+        self._log("info", "main.compare.log_started", gap=True)
+        self._log_html("muted", html.escape(t("main.compare.log_labels", a=label_a, b=label_b)))
 
-        progress = QProgressDialog("SBOM を読み込み・比較しています...", "キャンセル", 0, 100, self)
-        progress.setWindowTitle("SBOM の比較")
+        progress = QProgressDialog(t("main.compare.progress_label"), t("main.dlg.cancel"), 0, 100, self)
+        progress.setWindowTitle(t("main.compare.progress_title"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)   # 比較中に編集されないよう、メイン画面の操作を止める
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
@@ -1233,23 +1189,22 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def on_compare_error(self, error_msg: str):
         self._finish_compare_ui()
-        self.compliance_report.append(f"<br><font color='red'><b>[ERROR]</b> 比較失敗: {html.escape(error_msg)}</font>")
-        self.status_bar.showMessage("SBOM の比較に失敗しました。")
-        QMessageBox.critical(self, "比較エラー", error_msg)
+        self._log("error", "main.compare.log_failed", gap=True, error=error_msg)
+        self.status_bar.showMessage(t("main.compare.status_failed"))
+        QMessageBox.critical(self, t("compare.ui.error_title"), error_msg)
 
     @Slot(object)
     def on_compare_finished(self, result):
         self._finish_compare_ui()
         if result is None:
-            self.compliance_report.append("<font color='gray'>[INFO] SBOM の比較をキャンセルしました。</font>")
-            self.status_bar.showMessage("SBOM の比較をキャンセルしました。")
+            self._log_html("muted", "[INFO] " + html.escape(t("main.compare.log_cancelled")))
+            self.status_bar.showMessage(t("main.compare.log_cancelled"))
             return
 
         s = result.summary()
-        self.compliance_report.append(
-            f"<font color='green'><b>[SUCCESS]</b> 比較が完了しました。"
-            f"追加 {s['added']} / 削除 {s['removed']} / 変更 {s['changed']} / 未変更 {s['unchanged']}</font>")
-        self.status_bar.showMessage("SBOM の比較が完了しました。")
+        self._log("success", "main.compare.log_done", added=s["added"], removed=s["removed"],
+                  changed=s["changed"], unchanged=s["unchanged"])
+        self.status_bar.showMessage(t("main.compare.status_done"))
 
         dlg = SbomCompareDialog(result, self._jump_to_node, start_dir=self.last_dir,
                                 options_callback=self._remember_compare_options, parent=None)   # 独立ウィンドウ（親にすると常にメイン画面の前面に出るため）
@@ -1300,8 +1255,8 @@ class MainWindow(QMainWindow):
         return self._parse_busy or self._compare_busy or self._excel_busy
 
     def _current_compare_label(self) -> str:
-        name = os.path.basename(self.current_file_path) or "(無題)"
-        return f"{name} (編集中)" if self._modified else name
+        name = self._untitled()
+        return t("main.compare.label_editing", name=name) if self._modified else name
 
     def _is_in_main_window(self, obj) -> bool:
         """obj がメイン画面（またはその部品）か。子ダイアログ（確認・進捗など）や別ウィンドウは含めない"""
@@ -1338,7 +1293,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             traceback.print_exc()
             event.ignore()
-            self.status_bar.showMessage(f"ドロップの処理でエラーが発生しました: {type(e).__name__}: {e}", 10000)
+            self.status_bar.showMessage(t("main.drop.error", error=f"{type(e).__name__}: {e}"), 10000)
 
     def _warn_if_elevated(self):
         """Windows で管理者として実行していると、通常権限のエクスプローラーからはドロップできない（UIPI）"""
@@ -1350,10 +1305,9 @@ class MainWindow(QMainWindow):
         except Exception:
             return
         if elevated:
-            msg = ("管理者権限で実行中のため、エクスプローラーからのドラッグ＆ドロップは使えません"
-                   "（Windows の仕様）。通常の権限で起動し直してください。")
+            msg = t("main.drop.elevated")
             self.status_bar.showMessage(msg, 20000)
-            self.compliance_report.append(f"<font color='#B36B00'><b>[WARN]</b> {html.escape(msg)}</font>")
+            self._log_html("warn", html.escape(msg))
 
     def _on_drag_event(self, event, et):
         if et == QEvent.Type.Drop or et == QEvent.Type.DragEnter or self._drag_plan is None:
@@ -1388,13 +1342,12 @@ class MainWindow(QMainWindow):
         elif plan.kind == DropKind.CONFIRM_COMPARE_TWO:
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Question)
-            box.setWindowTitle("ファイルのドロップ")
-            box.setText("2 つのファイルがドロップされました。")
-            box.setInformativeText(
-                f"現在開いている SBOM を閉じて、次の 2 ファイルを比較します。\n\n"
-                f"A（旧）: {os.path.basename(paths[0])}\nB（新）: {os.path.basename(paths[1])}")
-            btn_ok = box.addButton("比較する", QMessageBox.ButtonRole.AcceptRole)
-            btn_cancel = box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+            box.setWindowTitle(t("main.drop.title"))
+            box.setText(t("main.drop.two_files"))
+            box.setInformativeText(t("main.drop.two_files_info",
+                                     a=os.path.basename(paths[0]), b=os.path.basename(paths[1])))
+            btn_ok = box.addButton(t("main.drop.btn_compare"), QMessageBox.ButtonRole.AcceptRole)
+            btn_cancel = box.addButton(t("main.dlg.cancel"), QMessageBox.ButtonRole.RejectRole)
             box.setDefaultButton(btn_ok)
             box.setEscapeButton(btn_cancel)
             box.exec()
@@ -1405,16 +1358,12 @@ class MainWindow(QMainWindow):
         """SBOM を開いている状態で 1 ファイルがドロップされたとき: 新規で開くか、比較するかを確認する"""
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle("ファイルのドロップ")
-        box.setText(f"「{os.path.basename(path)}」がドロップされました。")
-        box.setInformativeText(
-            "新規として開くか、現在開いている SBOM と比較するかを選んでください。\n\n"
-            "・新規として開く: 現在の SBOM を閉じて読み込みます。\n"
-            "・現在の SBOM と比較: 現在の SBOM（未保存の編集を含む）を A（旧）、"
-            "ドロップしたファイルを B（新）として比較します。")
-        btn_open = box.addButton("新規として開く", QMessageBox.ButtonRole.AcceptRole)
-        btn_compare = box.addButton("現在の SBOM と比較", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+        box.setWindowTitle(t("main.drop.title"))
+        box.setText(t("main.drop.one_file", name=os.path.basename(path)))
+        box.setInformativeText(t("main.drop.one_file_info"))
+        btn_open = box.addButton(t("main.drop.btn_open_new"), QMessageBox.ButtonRole.AcceptRole)
+        btn_compare = box.addButton(t("main.drop.btn_compare_current"), QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = box.addButton(t("main.dlg.cancel"), QMessageBox.ButtonRole.RejectRole)
         box.setDefaultButton(btn_open)
         box.setEscapeButton(btn_cancel)
         box.exec()
@@ -1441,6 +1390,9 @@ class MainWindow(QMainWindow):
 
         self._open_path(first, after_open=compare_after_open)
 
+    # ------------------------------------------------------------------
+    # 保存処理
+    # ------------------------------------------------------------------
     def _set_modified(self, modified: bool):
         self._modified = modified
         self._update_window_title()
@@ -1466,11 +1418,11 @@ class MainWindow(QMainWindow):
 
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle("未保存の変更")
-        box.setText("変更内容がファイルに保存されていません。\n保存しますか？")
-        btn_save = box.addButton("保存", QMessageBox.ButtonRole.AcceptRole)
-        btn_discard = box.addButton("破棄", QMessageBox.ButtonRole.DestructiveRole)
-        box.addButton("キャンセル", QMessageBox.ButtonRole.RejectRole)
+        box.setWindowTitle(t("main.dlg.unsaved_title"))
+        box.setText(t("main.dlg.unsaved_text"))
+        btn_save = box.addButton(t("main.dlg.save"), QMessageBox.ButtonRole.AcceptRole)
+        btn_discard = box.addButton(t("main.dlg.discard"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(t("main.dlg.cancel"), QMessageBox.ButtonRole.RejectRole)
         box.exec()
 
         clicked = box.clickedButton()
@@ -1481,7 +1433,7 @@ class MainWindow(QMainWindow):
     def save_file(self) -> bool:
         """現在開いているファイルに上書き保存する。成功したら True"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "保存するSBOMデータが読み込まれていません。")
+            self._warn_box("main.warn.no_data_to_save")
             return False
         if not self._commit_pending_edit():
             return False
@@ -1492,14 +1444,14 @@ class MainWindow(QMainWindow):
     def save_file_as(self) -> bool:
         """ファイルチューザーを開いて別名で保存する。成功したら True"""
         if not self.current_root_node:
-            QMessageBox.warning(self, "Warning", "保存するSBOMデータが読み込まれていません。")
+            self._warn_box("main.warn.no_data_to_save")
             return False
         if not self._commit_pending_edit():
             return False
 
         default_path = self.current_file_path or os.path.join(self.last_dir or "", "sbom.spdx.json")
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "名前を付けて保存", default_path, "SPDX JSON (*.json);;All Files (*)"
+            self, t("main.dlg.save_as_title"), default_path, "SPDX JSON (*.json);;All Files (*)"
         )
         if not file_path:
             return False
@@ -1528,10 +1480,9 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
         if error is not None:
-            self.status_bar.showMessage("Save failed.")
-            self.compliance_report.append(
-                f"<font color='red'><b>[ERROR]</b> 保存失敗: {html.escape(str(error))}</font>")
-            QMessageBox.critical(self, "エラー", f"ファイルの保存に失敗しました:\n{error}")
+            self.status_bar.showMessage(t("main.status.save_failed"))
+            self._log("error", "main.log.save_failed", error=str(error))
+            QMessageBox.critical(self, t("main.dlg.error"), t("main.dlg.save_failed", error=str(error)))
             return False
 
         # --- 成功時の状態更新 ---
@@ -1540,21 +1491,30 @@ class MainWindow(QMainWindow):
         self.settings.setValue("last_directory", self.last_dir)
         self._set_modified(False)
 
-        self.status_bar.showMessage(f"Saved: {file_path}")
-        self.compliance_report.append(
-            f"<font color='green'><b>[SUCCESS]</b> 保存しました:</font> "
-            f"<font color='gray'>{html.escape(file_path)}</font>")
+        self.status_bar.showMessage(t("main.status.saved", path=file_path))
+        self._log("success", "main.log.saved", path=file_path)
         if warnings:
-            self.compliance_report.append(
-                f"<font color='#b36b00'><b>[WARN]</b> SPDX 2.3 の構造チェックで {len(warnings)} 件の指摘があります"
-                "（ファイルは保存済みです）:</font>")
+            self._log("warn", "main.log.save_warnings", n=len(warnings))
             for msg in warnings:
                 self.compliance_report.append(f"&nbsp;&nbsp;・{html.escape(msg)}")
         return True
 
+    # ------------------------------------------------------------------
+    # テーマ・言語
+    # ------------------------------------------------------------------
     def _set_theme_mode(self, mode: str):
         theme.apply_theme(QApplication.instance(), mode)
         self.settings.setValue("theme_mode", mode)
+
+    def _set_language(self, code: str):
+        """言語の設定を保存する（反映は次回起動時）。案内は新旧どちらの言語でも読めるよう両方で表示する。"""
+        if code == str(self.settings.value("language", "auto")):
+            return
+        self.settings.setValue("language", code)
+        new_lang = i18n.normalize_language(code)
+        messages = dict.fromkeys([i18n.t_in(new_lang, "menu.language.restart_msg"),
+                                  i18n.t_in(i18n.current_language(), "menu.language.restart_msg")])
+        QMessageBox.information(self, i18n.t_in(new_lang, "menu.language.restart_title"), "\n\n".join(messages))
 
     def changeEvent(self, event):
         # テーマ（パレット）が変わったら、色を塗ったアイコンを塗り直す
