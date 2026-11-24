@@ -1,69 +1,144 @@
-# SBOMcraft 
+# SBOMcraft
 
+ [English](README.md) | [日本語](README_ja.md)
 
-## 概要
+SBOMcraft is a lightweight Windows desktop application for viewing, editing, validating, comparing, and converting Software Bill of Materials (SBOM) documents.
 
-SBOMcraft は、SBOM（Software Bill of Materials）の閲覧および検証を目的とした Windows 向けの軽量ツールです。  
-独自実装の検証エンジンにてCISAの2026年の最小要件のチェック機能を備えています。
-SPDX2.3 JSON形式の読み書き、SPDX3.1 JSON-LD出力に対応しています。
-v0.7.0.0から編集機能を追加しています。
-開発は生成AI利用で現在は Claude のブラウザ環境を利用しています。
+It supports SPDX 2.3 JSON import/export and provides experimental SPDX 3.1 JSON-LD generation. SBOMcraft also includes validation features based on NTIA minimum elements and CISA's 2026 minimum SBOM requirements.
 
-## 主な機能
+## Features
 
-**高速かつ安定した SBOM パース処理**
-- `QThread` によるバックグラウンド処理により、数万行規模の SPDX 2.3 JSON を読み込んでも UI が停止しません。
-- パース進捗は画面下部のログ領域にリアルタイムで表示されます。
+- Fast SPDX 2.3 JSON parsing and visualization
+- SPDX 2.3 JSON editing
+- Experimental SPDX 3.1 JSON-LD export
+- NTIA minimum elements validation
+- CISA 2026 minimum requirements validation
+- SPDX license verification
+- Excel integration for bulk editing
+- SBOM comparison and change analysis
+- Drag & Drop support
+- Japanese and English user interface
 
-**階層構造ビューと JSON 表示**
-- SBOM の構造をGUI、ツリー形式で直感的に閲覧できます。
-- 選択したコンポーネントの詳細情報と該当 JSON ソースを、右ペインに分割表示します。
+## Multi-language Support
 
-**独自エンジンによるNTIA / CISA 最小要件チェック**
-- 独自エンジンによるNTIAの最小要件のチェックと、CISA の2026年の最小要件でのチェック機能を提供します
-- 不適合箇所はツリー上で強調表示され、詳細レポートが画面下部に自動生成されます。
-- 大きなサイズのSBOMでも高速にチェックします。
-- チェック処理はAI生成です。チェックの仕様はVALIDATION_RULE_CISA2026.mdを参照してください。
+SBOMcraft supports both Japanese and English user interfaces.
 
-**読み込んだSPDX2.3からSPDX3.1 JSON-LDへの変換処理**
-- 独自エンジンによるSPDX3.1 JSON-LD形式への変換機能を試験的に提供します。試験的な機能のため項目は限定的です。
+The display language is automatically selected based on the Windows display language and can also be changed manually within the application.
 
-**licenseチェック**
-- SPDX Licenseの情報の取得し、SPDXライセンスとの一致性を確認します。チェック結果をCSVでダウンロードできます。
+## Supported Formats
 
-**SBOM編集機能** 
-- GUI上でPackages内のパッケージのSBOM情報の編集、保存ができます。
-- Packages内のパッケージ情報をExcel出力し、編集したExcelファイルを取り込むことができます。
-- 詳細な利用方法は、excel_integration_guide.md 参照
+### Input
 
-**SBOM比較機能**
-- 現在開いているSBOMと別のSBOM（またはディスク上の元ファイルと編集中の内容）を比較し、追加・削除・バージョン変更・その他の変更を一覧できます。
-- 突合キーは「自動（purl → 名前）」「SPDXID」「名前+バージョン」「名前のみ」「purlのみ」から選べます。ツールが異なるSBOM同士は「自動」を推奨します。
-- 同一バージョンなのにchecksumが一致しないパッケージなど、要注意の変更を強調表示します。結果はCSVに出力できます。
-- SBOMファイルはウィンドウへのドラッグ＆ドロップでも開けます。2ファイル同時にドロップすると、1つ目をA（旧）、2つ目をB（新）として自動で比較します（3ファイル以上は受け付けません）。
+- SPDX 2.3 JSON
 
-## Download and Installation
-ツールの実行ファイルは、GitHubのリリースページで配布しています。バイナリファイルを手動でダウンロードしてください。
+### Output
 
-**動作環境**
+- SPDX 2.3 JSON
+- SPDX 3.1 JSON-LD (experimental)
 
- 対応 OS: Windows 10 / 11 (64bit)
+## Main Functions
 
- ランタイム: 不要（配布 EXE は Python を含むため、追加インストールなしで起動可能）
+### Fast and Responsive SBOM Loading
 
+- Uses QThread-based background processing to keep the UI responsive while loading large SPDX documents.
+- Parsing progress is displayed in real time in the log panel.
 
-## 注意事項
+### Hierarchical Tree View and JSON Viewer
 
-- 初回起動時、Windows SmartScreen により警告が表示される場合があります。  
-  未署名アプリによる標準的な挙動であり、**「詳細情報」→「実行」** を選択することで起動できます。
+- Browse SBOM structures using an intuitive tree view.
+- View component details and the corresponding JSON source side by side.
 
+### NTIA / CISA Validation
 
-## ライセンス / クレジット
+- Validate SBOM documents against NTIA minimum elements.
+- Validate against CISA 2026 minimum SBOM requirements.
+- Highlight validation issues directly in the tree view.
+- Automatically generate detailed validation reports.
+- Designed to perform efficiently even with large SBOM files.
+
+> **Note**
+>
+> The validation engine is an independent implementation provided by SBOMcraft and is not an official NTIA or CISA validation tool.
+>
+> For validation details, see `VALIDATION_RULE_CISA2026.md`.
+
+### SPDX 3.1 JSON-LD Conversion
+
+- Convert SPDX 2.3 JSON documents into SPDX 3.1 JSON-LD format.
+- This feature is currently experimental and supports a limited set of fields.
+
+### License Verification
+
+- Retrieve SPDX License information.
+- Check license identifiers used in the SBOM against SPDX License List definitions.
+- Export validation results to CSV format.
+
+### SBOM Editing
+
+- Edit package information directly from the GUI.
+- Save modifications back to the SBOM document.
+- Export package information to Excel.
+- Import modified Excel files back into the SBOM.
+
+For details, see `excel_integration_guide.md`.
+
+### SBOM Comparison
+
+- Compare the currently opened SBOM with another SBOM file.
+- Compare the original file with the currently edited content.
+- Detect additions, removals, version changes, and other modifications.
+- Multiple matching methods are available:
+  - Automatic (purl → name)
+  - SPDXID
+  - Name + Version
+  - Name Only
+  - purl Only
+- Highlight potentially important changes such as checksum mismatches.
+- Export comparison results to CSV.
+
+### Drag & Drop Support
+
+- Open SBOM files by dragging them into the application window.
+- Dropping two files simultaneously automatically starts a comparison.
+- More than two files dropped at once are not supported.
+
+## Screenshot
+
+_Add screenshots here._
+
+## Download
+
+Executable files are available from the GitHub Releases page.
+
+## System Requirements
+
+- Windows 10 (64-bit)
+- Windows 11 (64-bit)
+
+No additional runtime installation is required.
+
+The distributed executable includes all required Python runtime components.
+
+## Important Notes
+
+On first launch, Windows SmartScreen may display a warning because the application is currently unsigned.
+
+Select:
+
+**More info → Run anyway**
+
+to start the application.
+
+## Development
+
+SBOMcraft is developed with the assistance of generative AI tools.
+
+AI-generated code and validation logic are reviewed and tested before release.
+
+## License
 
 SPDX-License-Identifier: Apache-2.0
 
+## Credits
+
 Developed by XZ Manj
-
-
-
-
