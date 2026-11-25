@@ -1,12 +1,12 @@
 {
-  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.3.0-d1e4c559-656b-4275-89e3-923157531553",
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.5.0-40a29600-047b-4886-a67b-e0082fb8841c",
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SBOMcraft",
   "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
   "creationInfo": {
-    "created": "2026-11-20T13:00:31Z",
+    "created": "2026-11-25T10:43:31Z",
     "creators": [
       "Person: XZ Manj",
       "Tool: py-sbom-mini-1.1.0"
@@ -16,7 +16,7 @@
     {
       "name": "SBOMcraft",
       "SPDXID": "SPDXRef-RootPackage",
-      "versionInfo": "0.7.3.0",
+      "versionInfo": "0.7.5.0",
       "supplier": "Person: XZ Manj",
       "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
       "filesAnalyzed": false,
@@ -28,14 +28,14 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "1ec6bf96553c42267b4e0a42632b5dc57fcdcf1245a087b681bfeec38a05c224"
+          "checksumValue": "01f115f2f7e13f4dfdb82f551e8b02a98f77a586d03f75ac29f2281006feaafa"
         }
       ],
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:generic/SBOMcraft@0.7.3.0"
+          "referenceLocator": "pkg:generic/SBOMcraft@0.7.5.0"
         }
       ]
     },
@@ -92,6 +92,32 @@
       ]
     },
     {
+      "name": "cyclonedx-python-lib",
+      "SPDXID": "SPDXRef-Package-cyclonedx-python-lib",
+      "versionInfo": "11.12.0",
+      "supplier": "Organization: Paul Horton",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) OWASP Foundation. All Rights Reserved.",
+      "summary": "Python library for CycloneDX",
+      "homepage": "https://github.com/CycloneDX/cyclonedx-python-lib/#readme",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/cyclonedx-python-lib@11.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3c8030e8dfa0b1df3c9e7153c4eb01e57c65f0793f276bfee79633f1d0c4ace1"
+        }
+      ]
+    },
+    {
       "name": "openpyxl",
       "SPDXID": "SPDXRef-Package-openpyxl",
       "versionInfo": "3.1.5",
@@ -144,28 +170,80 @@
       ]
     },
     {
-      "name": "cyclonedx-python-lib",
-      "SPDXID": "SPDXRef-Package-cyclonedx-python-lib",
-      "versionInfo": "11.12.0",
-      "supplier": "Organization: Paul Horton",
+      "name": "license-expression",
+      "SPDXID": "SPDXRef-Package-license-expression",
+      "versionInfo": "30.4.4",
+      "supplier": "Organization: nexB. Inc. and others",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
       "licenseConcluded": "Apache-2.0",
       "licenseDeclared": "Apache-2.0",
-      "copyrightText": "Copyright (c) OWASP Foundation. All Rights Reserved.",
-      "summary": "Python library for CycloneDX",
-      "homepage": "https://github.com/CycloneDX/cyclonedx-python-lib/#readme",
+      "copyrightText": "Copyright (c) nexB. Inc. and others",
+      "summary": "license-expression is a comprehensive utility library to parse, compare, simplify and normalize license expressions (such as SPDX license expressions) using boolean logic.",
+      "homepage": "https://github.com/aboutcode-org/license-expression",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/cyclonedx-python-lib@11.12.0"
+          "referenceLocator": "pkg:pypi/license-expression@30.4.4"
         }
       ],
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "3c8030e8dfa0b1df3c9e7153c4eb01e57c65f0793f276bfee79633f1d0c4ace1"
+          "checksumValue": "1b6e0530187ebbbce5db39f96be77e7f8c48c4ea95a7362aeec33854dae8b98e"
+        }
+      ]
+    },
+    {
+      "name": "py-serializable",
+      "SPDXID": "SPDXRef-Package-py-serializable",
+      "versionInfo": "2.1.0",
+      "supplier": "Organization: Paul Horton",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright (c) Paul Horton 2022. All Rights Reserved.",
+      "summary": "Library for serializing and deserializing Python Objects to and from JSON and XML.",
+      "homepage": "https://github.com/madpah/serializable#readme",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/py-serializable@2.1.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "addc499cdfde40cfa4b5b3feab3e6e17ce15811b3a9cfe2c2821b18e90ebf6f1"
+        }
+      ]
+    },
+    {
+      "name": "sortedcontainers",
+      "SPDXID": "SPDXRef-Package-sortedcontainers",
+      "versionInfo": "2.4.0",
+      "supplier": "Organization: Grant Jenks",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0",
+      "licenseDeclared": "Apache-2.0",
+      "copyrightText": "Copyright 2014-2019 Grant Jenks",
+      "summary": "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set",
+      "homepage": "http://www.grantjenks.com/docs/sortedcontainers/",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/sortedcontainers@2.4.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "4d8e5c59ce547431fc022b58a9a1a43142b920251397667467e280b6d5fd4e66"
         }
       ]
     },
@@ -300,110 +378,6 @@
       ]
     },
     {
-      "name": "license-expression",
-      "SPDXID": "SPDXRef-Package-license-expression",
-      "versionInfo": "30.4.4",
-      "supplier": "Organization: nexB. Inc. and others",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "Apache-2.0",
-      "licenseDeclared": "Apache-2.0",
-      "copyrightText": "Copyright (c) nexB. Inc. and others",
-      "summary": "license-expression is a comprehensive utility library to parse, compare, simplify and normalize license expressions (such as SPDX license expressions) using boolean logic.",
-      "homepage": "https://github.com/aboutcode-org/license-expression",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/license-expression@30.4.4"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "1b6e0530187ebbbce5db39f96be77e7f8c48c4ea95a7362aeec33854dae8b98e"
-        }
-      ]
-    },
-    {
-      "name": "py-serializable",
-      "SPDXID": "SPDXRef-Package-py-serializable",
-      "versionInfo": "2.1.0",
-      "supplier": "Organization: Paul Horton",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "Apache-2.0",
-      "licenseDeclared": "Apache-2.0",
-      "copyrightText": "Copyright (c) Paul Horton 2022. All Rights Reserved.",
-      "summary": "Library for serializing and deserializing Python Objects to and from JSON and XML.",
-      "homepage": "https://github.com/madpah/serializable#readme",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/py-serializable@2.1.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "addc499cdfde40cfa4b5b3feab3e6e17ce15811b3a9cfe2c2821b18e90ebf6f1"
-        }
-      ]
-    },
-    {
-      "name": "sortedcontainers",
-      "SPDXID": "SPDXRef-Package-sortedcontainers",
-      "versionInfo": "2.4.0",
-      "supplier": "Organization: Grant Jenks",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "Apache-2.0",
-      "licenseDeclared": "Apache-2.0",
-      "copyrightText": "Copyright 2014-2019 Grant Jenks",
-      "summary": "Sorted Containers -- Sorted List, Sorted Dict, Sorted Set",
-      "homepage": "http://www.grantjenks.com/docs/sortedcontainers/",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/sortedcontainers@2.4.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "4d8e5c59ce547431fc022b58a9a1a43142b920251397667467e280b6d5fd4e66"
-        }
-      ]
-    },
-    {
-      "name": "shiboken6",
-      "SPDXID": "SPDXRef-Package-shiboken6",
-      "versionInfo": "6.12.0",
-      "supplier": "Organization: Qt for Python Team",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only",
-      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python/C++ bindings helper module",
-      "homepage": "https://pyside.org",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/shiboken6@6.12.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "6294a37825eb2cb5b3eee91546c735fc1790f3da04cefcac945f495221c0b656"
-        }
-      ]
-    },
-    {
       "name": "boolean.py",
       "SPDXID": "SPDXRef-Package-boolean.py",
       "versionInfo": "5.0",
@@ -454,6 +428,32 @@
           "checksumValue": "f494c4996d3db354933ac0f6bb4ac38d3323ec685a6a3369cf1fabff330ac97b"
         }
       ]
+    },
+    {
+      "name": "shiboken6",
+      "SPDXID": "SPDXRef-Package-shiboken6",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python/C++ bindings helper module",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/shiboken6@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "6294a37825eb2cb5b3eee91546c735fc1790f3da04cefcac945f495221c0b656"
+        }
+      ]
     }
   ],
   "relationships": [
@@ -488,26 +488,6 @@
       "relatedSpdxElement": "SPDXRef-Package-packageurl-python"
     },
     {
-      "spdxElementId": "SPDXRef-Package-PySide6",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-PySide6-Addons"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-PySide6",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-PySide6-Essentials"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-PySide6",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-PySide6-Pdf"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-PySide6",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-PySide6-WebEngine"
-    },
-    {
       "spdxElementId": "SPDXRef-Package-cyclonedx-python-lib",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-license-expression"
@@ -528,6 +508,36 @@
       "relatedSpdxElement": "SPDXRef-Package-sortedcontainers"
     },
     {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Addons"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Essentials"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-Pdf"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-PySide6",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-PySide6-WebEngine"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-license-expression",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-boolean.py"
+    },
+    {
+      "spdxElementId": "SPDXRef-Package-py-serializable",
+      "relationshipType": "DEPENDS_ON",
+      "relatedSpdxElement": "SPDXRef-Package-defusedxml"
+    },
+    {
       "spdxElementId": "SPDXRef-Package-PySide6-Addons",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-PySide6-Essentials"
@@ -546,16 +556,6 @@
       "spdxElementId": "SPDXRef-Package-PySide6-WebEngine",
       "relationshipType": "DEPENDS_ON",
       "relatedSpdxElement": "SPDXRef-Package-PySide6-Addons"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-license-expression",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-boolean.py"
-    },
-    {
-      "spdxElementId": "SPDXRef-Package-py-serializable",
-      "relationshipType": "DEPENDS_ON",
-      "relatedSpdxElement": "SPDXRef-Package-defusedxml"
     }
   ],
   "hasExtractedLicensingInfos": [
