@@ -1,6 +1,6 @@
 # SBOMcraft
 
- [English](README.md) | [日本語](README_ja.md)
+ [English](readme.md) | [日本語](readme_ja.md)
 
 SBOMcraft は、SBOM（Software Bill of Materials）の閲覧、編集、検証、比較、および変換を行う Windows 向けの軽量デスクトップアプリケーションです。
 
