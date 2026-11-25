@@ -23,10 +23,17 @@ class ValidationWorker(QThread):
         self.profile = profile
 
     def run(self):
+        def _status(msg: str):
+            self.progress_status.emit(msg)
+            self.msleep(1)          # GIL を手放し、UI スレッドに再描画の機会を与える
+
+        def _percent(p: int):
+            self.progress_percent.emit(p)
+
         try:
             result = validate_sbom(
                 self.sbom_data, self.profile,
-                status=self.progress_status.emit, percent=self.progress_percent.emit,
+                status=_status, percent=_percent,
             )
         except Exception as e:      # 例外で終わると、メニューが無効のまま戻らなくなるため必ず結果を返す
             message = f"{type(e).__name__}: {e}"

@@ -9,6 +9,9 @@
   "validation.progress.done": "✅ Validation complete (elapsed: {sec} s)",
   "validation.progress.failed": "❌ An error occurred during validation: {error}",
   "validation.progress.failed_report": "Error: an exception occurred during validation ({error})",
+  "validation.main.start_time": "Started at: {time}",
+  "validation.main.period": "Period: {start} – {end} (total {sec} s = validation {check} s + rendering {render} s)",
+  "validation.main.rendering": "Rendering report… (this may take a while for large reports)",
 
   "validation.report.title": "📋 SBOM Conformance Report [{profile}]",
   "validation.report.overall": "Overall result:",
@@ -22,6 +25,9 @@
   "validation.report.col_errors": "Errors (Error) / suggested fixes",
   "validation.report.col_warnings": "Warnings (Warning) / suggested fixes",
   "validation.report.all_ok": "All packages meet the specified validation criteria.",
+  "validation.report.truncated": "Showing only the first {shown} of {total} packages with findings (those with errors first). See the full report opened in your browser.",
+  "validation.main.report_file": "Full report: {path}",
+  "validation.main.report_failed": "Failed to write or open the full report: {error}",
 
   "validation.issue.ERR_CISA_AUTHOR_MISSING.msg": "A. The SBOM author is not specified.",
   "validation.issue.ERR_CISA_AUTHOR_MISSING.fix": "Add valid author information (e.g. Organization: Example Inc.) to creationInfo.creators.",

@@ -6,14 +6,16 @@ import os
 import sys
 import html
 import traceback
-from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer, QSize
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QActionGroup
+from PySide6.QtCore import QThread, Slot, QModelIndex, Qt, QSettings, QEvent, QTimer, QSize, QUrl   # QUrl を追加
+from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon, QActionGroup, QDesktopServices, QTextCursor   # 2つ追加
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QTreeView, QTextEdit, QSplitter,
     QVBoxLayout, QHBoxLayout, QLabel, QHeaderView,
     QStatusBar, QFileDialog, QMessageBox, QApplication, QDialog, QToolButton, QMenu,
     QProgressDialog
 )
+
+
 
 from core import i18n
 from core.i18n import t
@@ -39,7 +41,11 @@ from ui.compare_dialog import SbomCompareDialog
 from ui.compare_setup_dialog import CompareSetupDialog
 from ui import theme
 from ui.widgets import ISSUE_ROLE, TreeIssueDelegate, strip_leading_emoji
+import time
+from datetime import datetime
+import tempfile
 
+REPORT_AUTO_OPEN_ALWAYS = False
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -62,6 +68,8 @@ class MainWindow(QMainWindow):
         self._compare_mode = self._load_compare_mode()
         self._compare_groups = self._load_compare_groups()
         self.validation_worker = None
+        self._val_started_at = None   # 検証開始の日時（表示用）
+        self._val_t0 = 0.0            # 検証開始の perf_counter（所要時間用）
 
         # SPDX ライセンスマネージャーの初期化（ローカルキャッシュの読み込み）
         self.license_manager = SPDXLicenseManager()
@@ -357,39 +365,93 @@ class MainWindow(QMainWindow):
         self.run_compliance_check(profile)
 
     def run_compliance_check(self, profile: str):
-        # バックグラウンドスレッド(QThread)を使って非同期で適合性検証を実行する
         if not self.current_file_path:
             return
 
+        self._val_started_at = datetime.now()
+        self._val_t0 = time.perf_counter()
+
         self.compliance_report.clear()
         self._log_plain("validation.main.started", profile=profile)
+        self._log_plain("validation.main.start_time",
+                        time=self._val_started_at.strftime("%Y-%m-%d %H:%M:%S"))
 
-        # 二重実行を防止するためにメニューを一時無効化
         self.set_validation_menu_enabled(False)
 
-        # バックグラウンドワーカー（検証ロジックは core/validator.py）
         sbom_dict = self.build_dict_from_root_node(self.current_root_node)
         self.validation_worker = ValidationWorker(sbom_data=sbom_dict, profile=profile)
         self.validation_worker.progress_status.connect(self.on_validation_progress)
         self.validation_worker.finished_report.connect(self.on_validation_finished)
         self.validation_worker.start()
-
+        
     def on_validation_progress(self, message: str):
         """ワーカーから進捗状況（ログ）が送られてくる度にコンソールにリアルタイム追記"""
         self.compliance_report.append(html.escape(message))
         self.compliance_report.ensureCursorVisible()
+        self.status_bar.showMessage(message)
+
+    @Slot(dict)
+    def _save_and_open_full_report(self, result: dict) -> str:
+        """全件の HTML を一時フォルダに書き出してブラウザで開く。成功したらファイルのパス、失敗したら ''。"""
+        page = result.get("report_file_html")
+        if not page:
+            return ""
+        try:
+            folder = os.path.join(tempfile.gettempdir(), "sbomcraft_reports")
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, f"validation_{result.get('profile', 'report')}.html")   # 毎回上書き
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(page)
+        except OSError as e:
+            self._log("error", "validation.main.report_failed", error=str(e))
+            return ""
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
+            self._log("warn", "validation.main.report_failed", error=path)
+        return path
 
     @Slot(dict)
     def on_validation_finished(self, result: dict):
-        """検証完了時に最終HTMLレポートを描画する"""
+        fmt = "%Y-%m-%d %H:%M:%S"
+        check_sec = time.perf_counter() - self._val_t0      # 開始〜検証完了（辞書構築を含む）
+
+        self.status_bar.showMessage(t("validation.main.rendering"))
+        self._log_plain("validation.main.rendering")
+        QApplication.processEvents()
+
+        # 指摘が上限を超えたときは、全件のレポートをブラウザで開く
+        report_path = ""
+        if result.get("truncated") or REPORT_AUTO_OPEN_ALWAYS:
+            report_path = self._save_and_open_full_report(result)
+
+        # ヘッダーとレポートを1つの HTML にまとめて、1回だけ setHtml する
+        # （先に setHtml してから先頭へ insertHtml すると、段落が結合して改行されないため）
         self.compliance_report.setHtml(result["report_html"])
-
         self._mark_validation_issues(result.get("error_packages", []))
-
-        # 無効化していたメニューの復元
         self.set_validation_menu_enabled(True)
 
-        # スレッドが完全に終了してから参照を手放す（実行中の QThread を破棄しないため）
+        finished_at = datetime.now()
+        total_sec = time.perf_counter() - self._val_t0
+        period = t("validation.main.period",
+                   start=(self._val_started_at or finished_at).strftime(fmt),
+                   end=finished_at.strftime(fmt),
+                   sec=f"{total_sec:.2f}",
+                   check=f"{check_sec:.2f}",
+                   render=f"{total_sec - check_sec:.2f}")
+        muted = theme.tokens().text_muted
+        header = f"<p style='color:{muted}'>{html.escape(period)}"
+        if report_path:
+            header += f"<br>{html.escape(t('validation.main.report_file', path=report_path))}"
+        header += "</p><hr>"
+
+        # 先頭に挿入し、続けて改行ブロックを入れて既存の内容と分離する
+        cursor = self.compliance_report.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+        cursor.insertHtml(header)
+        cursor.insertBlock()
+        self.compliance_report.setTextCursor(cursor)
+        self.compliance_report.moveCursor(QTextCursor.MoveOperation.Start)
+        self.status_bar.showMessage(period)
+
         worker, self.validation_worker = self.validation_worker, None
         if worker is not None:
             worker.wait()

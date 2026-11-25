@@ -9,6 +9,9 @@
   "validation.progress.done": "✅ 検証完了 (所要時間: {sec} 秒)",
   "validation.progress.failed": "❌ 検証中にエラーが発生しました: {error}",
   "validation.progress.failed_report": "エラー: 検証中に例外が発生しました ({error})",
+  "validation.main.start_time": "開始時刻: {time}",
+  "validation.main.period": "検証期間: {start} 〜 {end}（全体 {sec} 秒 ＝ 検証 {check} 秒 ＋ 画面描画 {render} 秒）",
+  "validation.main.rendering": "レポートを描画中…（件数が多いと時間がかかります）",
 
   "validation.report.title": "📋 SBOM適合性検証レポート [{profile}]",
   "validation.report.overall": "総合判定:",
@@ -22,6 +25,9 @@
   "validation.report.col_errors": "エラー項目 (Error) / 修正提案",
   "validation.report.col_warnings": "警告項目 (Warning) / 修正提案",
   "validation.report.all_ok": "すべてのパッケージが指定された検証条件を満たしています。",
+  "validation.report.truncated": "指摘のあるパッケージが多いため、先頭 {shown} 件のみ表示しています（全 {total} 件、エラーのあるものを優先）。全件はブラウザで開くレポートで確認してください。",
+  "validation.main.report_file": "全件のレポート: {path}",
+  "validation.main.report_failed": "全件レポートの出力・表示に失敗しました: {error}",
 
   "validation.issue.ERR_CISA_AUTHOR_MISSING.msg": "A. SBOM作成者 (Author) の指定がありません。",
   "validation.issue.ERR_CISA_AUTHOR_MISSING.fix": "creationInfo.creators に有効な作成者情報（例: Organization: Example Inc.）を追加してください。",

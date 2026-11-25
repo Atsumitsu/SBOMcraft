@@ -17,12 +17,15 @@ import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from core.i18n import t
+from core.i18n import t, current_language   # t だけだったものを変更
 
 # 未定義・保留値の判定用予約語（小文字比較）
 UNKNOWN_VALUES = frozenset({
     "noassertion", "none", "unknown", "organization: unknown", "person: unknown",
 })
+PROGRESS_INTERVAL_SEC = 0.5     # 進捗メッセージを出す最短間隔
+
+REPORT_DISPLAY_LIMIT = 100      # アプリ内に表示する指摘パッケージの最大件数
 
 # 非推奨・弱小ハッシュアルゴリズム（小文字表記）
 WEAK_HASH_ALGORITHMS = frozenset({"md5", "sha1", "sha-1"})
@@ -42,6 +45,8 @@ _DEFAULT_COLORS: Dict[str, str] = {
 }
 _colors: Dict[str, str] = dict(_DEFAULT_COLORS)
 
+# ブラウザ用のレポートは、配色を CSS 変数で持つ（ダークモード対応）。QTextEdit は var() を解釈しないのでアプリ内では使わない
+_FILE_COLORS: Dict[str, str] = {k: f"var(--{k.replace('_', '-')})" for k in _DEFAULT_COLORS}
 
 def set_colors(colors: Dict[str, str]) -> None:
     _colors.update(colors)
@@ -138,11 +143,14 @@ def validate_sbom(data: Optional[Dict[str, Any]], profile: str = "CISA2026",
     # ---- パッケージレベル ----
     total = len(packages)
     say(t("validation.progress.pkg_start", total=f"{total:,}"))
-    update_interval = max(1, total // 20)
+    last_emit = 0.0
+#    update_interval = max(1, total // 20)
 
     for idx, pkg in enumerate(packages):
-        if idx % update_interval == 0 or idx == total - 1:
-            p = 40 + int((idx / total) * 50)
+        now = time.time()
+        if now - last_emit >= PROGRESS_INTERVAL_SEC or idx == total - 1:
+            last_emit = now
+            p = 40 + int(((idx + 1) / total) * 50)
             say(t("validation.progress.pkg_progress", done=f"{idx + 1:,}", total=f"{total:,}", pct=p))
             pct(p)
         if not isinstance(pkg, dict):
@@ -192,14 +200,20 @@ def validate_sbom(data: Optional[Dict[str, Any]], profile: str = "CISA2026",
     pct(95)
     passed = not doc_errors and not any(p["errors"] for p in error_packages)
     elapsed = time.time() - start
-    report = build_report_html(profile, passed, elapsed, doc_errors, doc_warnings, error_packages)
+    report = build_report_html(profile, passed, elapsed, doc_errors, doc_warnings, error_packages,
+                               limit=REPORT_DISPLAY_LIMIT)                       # アプリ内表示（先頭 N 件）
+    report_file = build_report_file_html(profile, passed, elapsed, doc_errors, doc_warnings,
+                                         error_packages)                         # ブラウザ用（全件）
     pct(100)
     say(t("validation.progress.done", sec=f"{elapsed:.2f}"))
-    return _result(passed, profile, elapsed, doc_errors, doc_warnings, error_packages, report)
+    return _result(passed, profile, elapsed, doc_errors, doc_warnings, error_packages, report,
+                   report_file, len(error_packages) > REPORT_DISPLAY_LIMIT)
 
 
-def _result(passed, profile, elapsed, doc_errors, doc_warnings, error_packages, report_html) -> Dict[str, Any]:
-    return {"passed": passed, "report_html": report_html, "error_packages": error_packages,
+def _result(passed, profile, elapsed, doc_errors, doc_warnings, error_packages, report_html,
+            report_file_html: str = "", truncated: bool = False) -> Dict[str, Any]:
+    return {"passed": passed, "report_html": report_html, "report_file_html": report_file_html,
+            "truncated": truncated, "error_packages": error_packages,
             "doc_errors": doc_errors, "doc_warnings": doc_warnings, "elapsed": elapsed, "profile": profile}
 
 
@@ -211,10 +225,10 @@ def _e(value: Any) -> str:
     return html.escape(_s(value))
 
 
-def build_report_html(profile: str, passed: bool, elapsed: float,
-                      doc_errors: List[Dict[str, str]], doc_warnings: List[Dict[str, str]],
-                      error_packages: List[Dict[str, Any]]) -> str:
-    c = _colors
+def _render_body(profile: str, passed: bool, elapsed: float,
+                 doc_errors: List[Dict[str, str]], doc_warnings: List[Dict[str, str]],
+                 error_packages: List[Dict[str, Any]], c: Dict[str, str],
+                 limit: Optional[int] = None) -> str:
     status_color = c["pass"] if passed else c["fail"]
     status_text = t("validation.report.pass") if passed else t("validation.report.fail")
 
@@ -238,15 +252,22 @@ def build_report_html(profile: str, passed: bool, elapsed: float,
         out.append("</ul>")
 
     if error_packages:
-        out.append(f"<h4>{_e(t('validation.report.pkg_heading', n=len(error_packages)))}</h4>")
+        total = len(error_packages)
+        shown = error_packages
+        if limit is not None and total > limit:
+            # エラーのあるパッケージを先に並べる（sorted は安定ソートなので、それぞれ元の順序は保たれる）
+            shown = sorted(error_packages, key=lambda p: not p["errors"])[:limit]
+        out.append(f"<h4>{_e(t('validation.report.pkg_heading', n=total))}</h4>")
+        if len(shown) < total:
+            out.append(f"<p style='color: {c['warn']};'><b>ℹ {_e(t('validation.report.truncated', shown=len(shown), total=total))}</b></p>")
         out.append(f"<table border='1' cellspacing='0' cellpadding='6' "
                    f"style='border-collapse:collapse; width:100%; border: 1px solid {c['border']};'>")
-        out.append(f"<tr bgcolor='{c['head_bg']}'><th>Pkg ID</th><th>{_e(t('validation.report.col_name'))}</th>"
+        out.append(f"<tr style='background-color:{c['head_bg']};'><th>Pkg ID</th><th>{_e(t('validation.report.col_name'))}</th>"
                    f"<th>{_e(t('validation.report.col_errors'))}</th><th>{_e(t('validation.report.col_warnings'))}</th></tr>")
-        for p in error_packages:
-            err_items = [f"<font color='{c['fail']}'>❌ <b>[{_e(e['code'])}]</b> {_e(e['msg'])}</font><br>"
+        for p in shown:
+            err_items = [f"<span style='color:{c['fail']}'>❌ <b>[{_e(e['code'])}]</b> {_e(e['msg'])}</span><br>"
                          f"<small style='color:{c['muted']};'>💡 {_e(e['fix'])}</small>" for e in p["errors"]]
-            warn_items = [f"<font color='{c['warn']}'>⚠️ <b>[{_e(w['code'])}]</b> {_e(w['msg'])}</font><br>"
+            warn_items = [f"<span style='color:{c['warn']}'>⚠️ <b>[{_e(w['code'])}]</b> {_e(w['msg'])}</span><br>"
                           f"<small style='color:{c['muted']};'>💡 {_e(w['fix'])}</small>" for w in p["warnings"]]
             out.append(f"<tr><td><code>{_e(p['spdx_id'])}</code></td><td><b>{_e(p['name'])}</b></td>"
                        f"<td>{'<br><br>'.join(err_items) if err_items else '-'}</td>"
@@ -257,3 +278,32 @@ def build_report_html(profile: str, passed: bool, elapsed: float,
 
     out.append("</div>")
     return "".join(out)
+
+
+def build_report_html(profile: str, passed: bool, elapsed: float,
+                      doc_errors: List[Dict[str, str]], doc_warnings: List[Dict[str, str]],
+                      error_packages: List[Dict[str, Any]], limit: Optional[int] = None) -> str:
+    """アプリ内（QTextEdit）に表示する HTML。limit を指定すると、指摘パッケージを先頭 limit 件に絞る。"""
+    return _render_body(profile, passed, elapsed, doc_errors, doc_warnings, error_packages, _colors, limit)
+
+
+_FILE_CSS = """
+:root { --pass:#28a745; --fail:#dc3545; --warn:#d97706; --muted:#555555; --head-bg:#f8f9fa; --border:#dddddd;
+        color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  :root { --pass:#4ade80; --fail:#f87171; --warn:#fbbf24; --muted:#9aa3b2; --head-bg:#1d212a; --border:#3a4150; }
+}
+body { margin: 24px; font-family: "Yu Gothic UI", "Segoe UI", sans-serif; }
+th, td { border: 1px solid var(--border); padding: 6px; vertical-align: top; text-align: left; }
+"""
+
+
+def build_report_file_html(profile: str, passed: bool, elapsed: float,
+                           doc_errors: List[Dict[str, str]], doc_warnings: List[Dict[str, str]],
+                           error_packages: List[Dict[str, Any]]) -> str:
+    """ブラウザで開く全件の HTML（完全なページ。ライト / ダークに追従）。"""
+    body = _render_body(profile, passed, elapsed, doc_errors, doc_warnings, error_packages, _FILE_COLORS)
+    return ("<!DOCTYPE html>\n"
+            f"<html lang=\"{_e(current_language())}\"><head><meta charset=\"utf-8\">"
+            f"<title>{_e(t('validation.report.title', profile=profile))}</title>"
+            f"<style>{_FILE_CSS}</style></head><body>{body}</body></html>")

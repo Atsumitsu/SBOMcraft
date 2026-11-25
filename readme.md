@@ -53,8 +53,9 @@ The display language is automatically selected based on the Windows display lang
 - Validate SBOM documents against NTIA minimum elements.
 - Validate against CISA 2026 minimum SBOM requirements.
 - Highlight validation issues directly in the tree view.
-- Automatically generate detailed validation reports.
 - Designed to perform efficiently even with large SBOM files.
+- Automatically generate detailed validation reports.
+- For cases with more than 100 findings, an HTML file is generated and displayed in a browser.
 
 > **Note**
 >
@@ -104,7 +105,13 @@ For details, see `excel_integration_guide.md`.
 
 ## Screenshot
 
-_Add screenshots here._
+### Main & Validation
+![SBOMcraft Main Window](docs/images/main.png)
+
+
+### Compare
+![Compare](docs/images/compare.png)
+
 
 ## Download
 
