@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QMessageBox, QPushButton, QSplitter, QStyle, QStyledItemDelegate, QStyleOptionViewItem,
     QTabBar, QTableView, QTextBrowser, QVBoxLayout,
 )
+from PySide6.QtWidgets import QMenu 
 
 from core.compare_report import detail_html, docs_html
 from core.comparer import (
@@ -30,20 +31,57 @@ _ARROWS = {"upgrade": "↑", "downgrade": "↓"}
 SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 DIFF_ROLE = Qt.ItemDataRole.UserRole + 2
 
-
 class DiffTableModel(QAbstractTableModel):
     # 見出しは「キー」だけ持ち、表示するときに t() で翻訳する（クラス属性で t() を呼ぶと import 時に言語が固定されるため）
-    HEADER_KEYS = ["compare.col.status", "compare.col.name", "compare.col.old_version",
+    HEADER_KEYS = ["adopt.ui.col_check", "compare.col.status", "compare.col.name", "compare.col.old_version",
                    "compare.col.new_version", "compare.col.changed_fields", "compare.col.attention"]
+    COL_CHECK, COL_STATUS = 0, 1
 
     def __init__(self, diffs: List[PackageDiff], parent=None):
         super().__init__(parent)
         self.diffs = diffs
+        self._checked: Set[int] = set()          # チェック済みの行（diffs 上の位置）
 
     def set_diffs(self, diffs: List[PackageDiff]):
         self.beginResetModel()
         self.diffs = diffs
+        self._checked = set()                    # 比較し直したらチェックはリセット
         self.endResetModel()
+
+    # -- チェック状態 ---------------------------------------------------------
+
+    @staticmethod
+    def _checkable(d: PackageDiff) -> bool:
+        return d.status != DiffStatus.UNCHANGED
+
+    def checked_diffs(self) -> List[PackageDiff]:
+        return [self.diffs[i] for i in sorted(self._checked) if i < len(self.diffs)]
+
+    def checked_count(self) -> int:
+        return len(self._checked)
+
+    def set_checked(self, source_rows, on: bool):
+        """source_rows: diffs 上の位置。チェックできない行（変更なし）は無視する"""
+        rows = [r for r in source_rows if 0 <= r < len(self.diffs) and self._checkable(self.diffs[r])]
+        if not rows:
+            return
+        if on:
+            self._checked.update(rows)
+        else:
+            self._checked.difference_update(rows)
+        self._notify_check_changed()
+
+    def clear_checked(self):
+        if self._checked:
+            self._checked.clear()
+            self._notify_check_changed()
+
+    def _notify_check_changed(self):
+        if self.diffs:
+            self.dataChanged.emit(self.index(0, self.COL_CHECK), self.index(len(self.diffs) - 1, self.COL_CHECK),
+                                  [Qt.ItemDataRole.CheckStateRole])
+
+    # -- QAbstractTableModel ---------------------------------------------------
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.diffs)
@@ -56,31 +94,55 @@ class DiffTableModel(QAbstractTableModel):
             return t(self.HEADER_KEYS[section])
         return None
 
+    def flags(self, index):
+        fl = super().flags(index)
+        if index.isValid() and index.column() == self.COL_CHECK and self._checkable(self.diffs[index.row()]):
+            fl |= Qt.ItemFlag.ItemIsUserCheckable
+        return fl
+
+    def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
+        if role == Qt.ItemDataRole.CheckStateRole and index.isValid() and index.column() == self.COL_CHECK:
+            if not self._checkable(self.diffs[index.row()]):
+                return False
+            on = value in (Qt.CheckState.Checked, Qt.CheckState.Checked.value, 2)   # Enum / int のどちらでも受ける
+            self.set_checked([index.row()], on)
+            return True
+        return False
+
     @staticmethod
     def _text(d: PackageDiff, col: int) -> str:
-        if col == 0:
+        """col は『反映』列を除いた内容列の番号（1〜6）"""
+        if col == 1:
             arrow = _ARROWS.get(d.version_change, "")
             return status_label(d.status) + (f" {arrow}" if arrow else "")
-        if col == 1:
-            return d.name
         if col == 2:
-            return d.version_a
+            return d.name
         if col == 3:
-            return d.version_b
+            return d.version_a
         if col == 4:
+            return d.version_b
+        if col == 5:
             return ", ".join(d.changed_fields)
         return "⚠ " + " / ".join(flag_label(f) for f in d.flags) if d.flags else ""
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
-        d = self.diffs[index.row()]
-        col = index.column()
+        row, col = index.row(), index.column()
+        d = self.diffs[row]
+        if role == Qt.ItemDataRole.CheckStateRole:
+            if col == self.COL_CHECK and self._checkable(d):
+                return Qt.CheckState.Checked if row in self._checked else Qt.CheckState.Unchecked
+            return None
+        if role == DIFF_ROLE:
+            return d
+        if col == self.COL_CHECK:
+            return None
         if role == Qt.ItemDataRole.DisplayRole:
             return self._text(d, col)
         if role == Qt.ItemDataRole.ToolTipRole:
             tip = self._text(d, col)
-            if col == 0 and d.version_change:
+            if col == self.COL_STATUS and d.version_change:
                 tip = t("compare.tooltip.status_change",
                         status=status_label(d.status), change=version_change_label(d.version_change))
             return tip or None
@@ -88,19 +150,16 @@ class DiffTableModel(QAbstractTableModel):
             # 行全体は塗らない。要注意だけ赤、未変更は控えめな色にする
             # ※ ローカル変数名を t にすると、上の t(...) が UnboundLocalError になるため tok とする
             tok = theme.tokens()
-            if col == 5 and d.flags:
+            if col == 6 and d.flags:
                 return QColor(tok.danger_fg)
             if d.status == DiffStatus.UNCHANGED:
                 return QColor(tok.text_muted)
             return None
         if role == SORT_ROLE:
-            if col == 0:
+            if col == self.COL_STATUS:
                 return _STATUS_ORDER[d.status]
             return self._text(d, col).lower()
-        if role == DIFF_ROLE:
-            return d
         return None
-
 
 class StatusChipDelegate(QStyledItemDelegate):
     """「状態」列: 丸いチップ + 行の左端に色バー（変更のある行のみ）"""
@@ -201,17 +260,15 @@ class SbomCompareDialog(QDialog):
     """
 
     def __init__(self, result: CompareResult, jump_callback: Callable[[object], bool],
-                 start_dir: str = "", options_callback: Optional[Callable] = None, parent=None):
+                 start_dir: str = "", options_callback: Optional[Callable] = None,
+                 adopt_callback: Optional[Callable] = None,      # (result, diffs, include_removed) -> AdoptResult | None
+                 can_adopt: Optional[Callable] = None,           # (result) -> bool
+                 parent=None):
         super().__init__(parent)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint
-                            | Qt.WindowType.WindowMinimizeButtonHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.resize(1250, 780)
-
-        self.result = result
-        self._jump = jump_callback
-        self._start_dir = start_dir
+        ...
         self._options_cb = options_callback
+        self._adopt_cb = adopt_callback
+        self._can_adopt = can_adopt
 
         self._build_ui()
         self.set_result(result)
@@ -279,7 +336,7 @@ class SbomCompareDialog(QDialog):
         self.table = QTableView()
         self.table.setModel(self._proxy)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(False)
@@ -288,12 +345,12 @@ class SbomCompareDialog(QDialog):
         self.table.verticalHeader().setDefaultSectionSize(32)
         self.table.setSortingEnabled(True)
         self._proxy.sort(-1)
-        self.table.setItemDelegateForColumn(0, StatusChipDelegate(self.table))
+        self.table.setItemDelegateForColumn(DiffTableModel.COL_STATUS, StatusChipDelegate(self.table))
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
         header.setHighlightSections(False)
-        for col, width in enumerate((150, 240, 140, 140, 260, 200)):   # 英語は見出しが長いので版数列を少し広げた
+        for col, width in enumerate((56, 150, 240, 140, 140, 260, 200)):
             self.table.setColumnWidth(col, width)
         self.table.doubleClicked.connect(lambda idx: self._jump_to_tree())
         splitter.addWidget(self.table)
@@ -318,6 +375,24 @@ class SbomCompareDialog(QDialog):
         btn_swap.setToolTip(t("compare.ui.swap_tip"))
         btn_swap.clicked.connect(self._swap)
         bottom.addWidget(btn_swap)
+        self.btn_adopt = QPushButton(t("adopt.ui.button"))
+
+        # 「チェック」メニュー
+        self.btn_check = QPushButton(t("adopt.ui.check_menu"))
+        check_menu = QMenu(self.btn_check)
+        check_menu.addAction(t("adopt.ui.check_shown"), self._check_shown)
+        check_menu.addAction(t("adopt.ui.check_selected"), lambda: self._check_selected(True))
+        check_menu.addAction(t("adopt.ui.uncheck_selected"), lambda: self._check_selected(False))
+        check_menu.addSeparator()
+        check_menu.addAction(t("adopt.ui.uncheck_all"), self._model.clear_checked)
+        self.btn_check.setMenu(check_menu)
+        bottom.addWidget(self.btn_check)
+
+        # チェックした行を反映（メニューではなく直接実行）
+        self.btn_adopt = QPushButton()
+        self.btn_adopt.clicked.connect(self._adopt)
+        bottom.addWidget(self.btn_adopt)
+
         btn_csv = QPushButton(t("compare.ui.export_csv"))
         btn_csv.setToolTip(t("compare.ui.export_csv_tip"))
         btn_csv.clicked.connect(self._export_csv)
@@ -335,6 +410,8 @@ class SbomCompareDialog(QDialog):
         layout.addLayout(bottom)
 
         self.table.selectionModel().currentRowChanged.connect(lambda cur, prev: self._show_detail())
+        self._model.dataChanged.connect(lambda *_: self._refresh_check_ui())
+        self._model.modelReset.connect(self._refresh_check_ui)
 
     # -- テーマ変更 -----------------------------------------------------------
 
@@ -378,6 +455,7 @@ class SbomCompareDialog(QDialog):
         self._model.set_diffs(result.diffs)
         self._proxy.sort(-1)
         self._on_tab_changed(self.tab_bar.currentIndex())
+        self._update_adopt_state()
 
     def _on_tab_changed(self, index: int):
         if index < 0:
@@ -411,7 +489,8 @@ class SbomCompareDialog(QDialog):
         return self._proxy.data(self._proxy.index(idx.row(), 0), DIFF_ROLE)
 
     def _show_detail(self):
-        self.status_label.setText(t("compare.ui.shown_count", n=self._proxy.rowCount()))
+        self._refresh_check_ui()          # ← 旧: self.status_label.setText(t("compare.ui.shown_count", ...))
+#        self.status_label.setText(t("compare.ui.shown_count", n=self._proxy.rowCount()))
         d = self._current_diff()
         if d is None:
             has_diff = self.result.count(
@@ -460,6 +539,7 @@ class SbomCompareDialog(QDialog):
             self._options_cb(mode, groups)
         self._recompare(r.root_a, r.root_b, r.doc_a.label, r.doc_b.label, mode, groups)
 
+ 
     def _export_csv(self):
         default = os.path.join(self._start_dir or "", "sbom_diff.csv")
         path, _ = QFileDialog.getSaveFileName(
@@ -475,3 +555,80 @@ class SbomCompareDialog(QDialog):
             QMessageBox.critical(self, t("compare.ui.csv_error_title"), t("compare.ui.csv_error_msg", error=e))
             return
         self.status_label.setText(t("compare.ui.csv_done", n=n, path=path))
+
+    # -- チェックして反映 -----------------------------------------------------
+
+    def _update_adopt_state(self):
+        """反映先（メイン画面の SBOM）が基準側 A のときだけ使える。set_result の末尾から呼ぶ"""
+        self._adopt_ok = bool(self._adopt_cb) and (self._can_adopt is None or self._can_adopt(self.result))
+        self._refresh_check_ui()
+
+    def _source_row(self, proxy_row: int) -> int:
+        return self._proxy.mapToSource(self._proxy.index(proxy_row, 0)).row()
+
+    def _selected_source_rows(self) -> List[int]:
+        return sorted({self._source_row(i.row()) for i in self.table.selectionModel().selectedRows()})
+
+    def _check_shown(self):
+        """表示中（タブ・検索で絞った結果）の変更行をすべてチェックする"""
+        self._model.set_checked([self._source_row(r) for r in range(self._proxy.rowCount())], True)
+
+    def _check_selected(self, on: bool):
+        self._model.set_checked(self._selected_source_rows(), on)
+
+    def _refresh_check_ui(self):
+        if not hasattr(self, "btn_adopt"):
+            return
+        n = self._model.checked_count()
+        ok = getattr(self, "_adopt_ok", False)
+        self.btn_adopt.setText(t("adopt.ui.button", n=n))
+        self.btn_adopt.setEnabled(ok and n > 0)
+        self.btn_adopt.setToolTip(t("adopt.ui.button_tip") if ok else t("adopt.ui.unavailable_tip"))
+        self.btn_adopt.setProperty("variant", "primary")
+        self.btn_adopt.style().unpolish(self.btn_adopt)
+        self.btn_adopt.style().polish(self.btn_adopt)
+
+        shown = self._proxy.rowCount()
+        shown_checked = sum(1 for r in range(shown)
+                            if self._source_row(r) in self._model._checked)
+        hidden = n - shown_checked
+        if hidden > 0:
+            self.status_label.setText(t("adopt.ui.status_counts_hidden", shown=shown, checked=n, hidden=hidden))
+        else:
+            self.status_label.setText(t("adopt.ui.status_counts", shown=shown, checked=n))
+
+    def _adopt(self):
+        # チェックした行すべて（タブ・検索で非表示になっている行も含む）
+        diffs = self._model.checked_diffs()
+        if not diffs:
+            QMessageBox.information(self, t("adopt.ui.title"), t("adopt.ui.nothing_checked"))
+            return
+
+        n_add = sum(d.status == DiffStatus.ADDED for d in diffs)
+        n_rem = sum(d.status == DiffStatus.REMOVED for d in diffs)
+        n_chg = len(diffs) - n_add - n_rem
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(t("adopt.ui.title"))
+        box.setText(t("adopt.ui.confirm", n=len(diffs), add=n_add, change=n_chg, remove=n_rem))
+        box.setInformativeText(t("adopt.ui.confirm_info"))
+        chk = None
+        if n_rem:
+            chk = QCheckBox(t("adopt.ui.include_removed", n=n_rem))     # 破壊的なので初期はオフ
+            box.setCheckBox(chk)
+        btn_ok = box.addButton(t("adopt.ui.btn_ok"), QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = box.addButton(t("main.dlg.cancel"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_cancel)
+        box.setEscapeButton(btn_cancel)
+        box.exec()
+        if box.clickedButton() is not btn_ok:
+            return
+
+        res = self._adopt_cb(self.result, diffs, bool(chk and chk.isChecked()))
+        if res is None:
+            return
+        r = self.result
+        # 基準側(A)が変わったので、同じ条件で比較し直す（反映済みの行は「変更なし」になり、チェックもリセットされる）
+        self._recompare(r.root_a, r.root_b, r.doc_a.label, r.doc_b.label, r.mode, r.groups)
+        self.status_label.setText(t("adopt.ui.done", modified=len(res.modified),
+                                    added=len(res.added), removed=len(res.removed)))

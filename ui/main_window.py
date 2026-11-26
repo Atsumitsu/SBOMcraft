@@ -35,6 +35,7 @@ from core.excel_io import export_packages, apply_changes
 from core.excel_worker import ExcelImportWorker
 from ui.excel_import_dialog import ExcelImportPreviewDialog
 from core.comparer import ALL_GROUPS, MatchKey
+from core.compare_apply import adopt_new_side
 from core.drop_plan import DropKind, plan_drop
 from core.compare_worker import CompareWorker
 from ui.compare_dialog import SbomCompareDialog
@@ -1269,10 +1270,77 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(t("main.compare.status_done"))
 
         dlg = SbomCompareDialog(result, self._jump_to_node, start_dir=self.last_dir,
-                                options_callback=self._remember_compare_options, parent=None)   # 独立ウィンドウ（親にすると常にメイン画面の前面に出るため）
+                                options_callback=self._remember_compare_options,
+                                adopt_callback=self._adopt_compare_result,
+                                can_adopt=self._can_adopt_compare,
+                                parent=None)# 独立ウィンドウ（親にすると常にメイン画面の前面に出るため）
         self._compare_dialogs.append(dlg)
         dlg.finished.connect(lambda _code=0, d=dlg: self._forget_compare_dialog(d))
         dlg.show()
+
+    # ------------------------------------------------------------------
+    # 比較結果の「新側(B)」を現在の SBOM に反映
+    # ------------------------------------------------------------------
+    def _can_adopt_compare(self, result) -> bool:
+        """メイン画面の SBOM が比較の基準側(A)のときだけ反映できる"""
+        return (self.current_root_node is not None and result.root_a is self.current_root_node
+                and not self._is_busy())
+
+    @staticmethod
+    def _make_node(*, name, node_type, spdx_id, properties):
+        node = SBOMNode(name=name, node_type=node_type, spdx_id=spdx_id, properties=properties)
+        if node_type == "package":
+            DetailPanel._refresh_node_label(node)
+        return node
+
+    def _rebuild_tree(self):
+        """追加・削除があったときにツリーを作り直す（検証バッジは消えるので、再検証が必要）"""
+        self.tree_view.setUpdatesEnabled(False)
+        try:
+            self.tree_model.removeRows(0, self.tree_model.rowCount())
+            self.populate_tree(self.current_root_node, self.tree_model.invisibleRootItem())
+            self.tree_view.expandToDepth(0)
+        finally:
+            self.tree_view.setUpdatesEnabled(True)
+
+    def _adopt_compare_result(self, result, diffs, include_removed):
+        if not self._can_adopt_compare(result):
+            self._warn_box("adopt.main.unavailable")
+            return None
+        if not self._commit_pending_edit():          # 編集中の内容を先に確定/破棄
+            return None
+
+        res = adopt_new_side(self.current_root_node, diffs, self._make_node, include_removed)
+
+        for node in res.modified:
+            DetailPanel._refresh_node_label(node)
+        if res.added or res.removed:
+            self._rebuild_tree()
+        else:
+            self._refresh_tree_items(res.modified)
+
+        current = getattr(self.detail_panel, "current_node", None)
+        if current is not None:
+            if any(current is n for n in res.removed):
+                self.detail_panel.clear_display()
+            elif any(current is n for n in res.modified):
+                self.detail_panel.update_display(current)
+
+        if res.changed:
+            self._edit_revision += 1
+            self._set_modified(True)
+
+        self._log("success", "adopt.main.log_done", gap=True,
+                  modified=len(res.modified), added=len(res.added), removed=len(res.removed))
+        if res.removed_relationships:
+            self._log_html("muted", html.escape(t("adopt.main.log_rel_removed", n=res.removed_relationships)))
+        for note in res.notes:
+            self._log_html("warn", html.escape(note))
+        for d, reason in res.skipped:
+            self._log_html("warn", html.escape(t("adopt.main.log_skipped", name=d.name, reason=reason)))
+        if res.changed:
+            self._log_html("muted", html.escape(t("excel.main.stale_validation")))
+        return res
 
     def _forget_compare_dialog(self, dlg):
         if dlg in self._compare_dialogs:
