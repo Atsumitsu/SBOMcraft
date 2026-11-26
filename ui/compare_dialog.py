@@ -265,10 +265,18 @@ class SbomCompareDialog(QDialog):
                  can_adopt: Optional[Callable] = None,           # (result) -> bool
                  parent=None):
         super().__init__(parent)
-        ...
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint
+                            | Qt.WindowType.WindowMinimizeButtonHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.resize(1250, 780)
+
+        self.result = result
+        self._jump = jump_callback              # ← これが抜けていた
+        self._start_dir = start_dir
         self._options_cb = options_callback
         self._adopt_cb = adopt_callback
         self._can_adopt = can_adopt
+        self._adopt_ok = False
 
         self._build_ui()
         self.set_result(result)
