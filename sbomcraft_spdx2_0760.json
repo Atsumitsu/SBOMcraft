@@ -1,12 +1,12 @@
 {
-  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.5.0-40a29600-047b-4886-a67b-e0082fb8841c",
+  "documentNamespace": "http://spdx.org/spdxdocs/SBOMcraft-0.7.6.0-31fe52b4-7ebe-437a-be13-a0c77c9f9566",
   "spdxVersion": "SPDX-2.3",
   "dataLicense": "CC0-1.0",
   "SPDXID": "SPDXRef-DOCUMENT",
   "name": "SBOMcraft",
   "comment": "Data Confidentiality: TLP:CLEAR | Type: Deployed | Generation Context: Deployed",
   "creationInfo": {
-    "created": "2026-11-25T10:43:31Z",
+    "created": "2026-11-28T06:14:09Z",
     "creators": [
       "Person: XZ Manj",
       "Tool: py-sbom-mini-1.1.0"
@@ -16,7 +16,7 @@
     {
       "name": "SBOMcraft",
       "SPDXID": "SPDXRef-RootPackage",
-      "versionInfo": "0.7.5.0",
+      "versionInfo": "0.7.6.0",
       "supplier": "Person: XZ Manj",
       "downloadLocation": "https://github.com/Atsumitsu/SBOMcraft",
       "filesAnalyzed": false,
@@ -28,66 +28,14 @@
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "01f115f2f7e13f4dfdb82f551e8b02a98f77a586d03f75ac29f2281006feaafa"
+          "checksumValue": "4ba0e983a6dd661d18507123b3a9a9c80bcd02d97d3eb27abd7bb0575ec9b433"
         }
       ],
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:generic/SBOMcraft@0.7.5.0"
-        }
-      ]
-    },
-    {
-      "name": "packageurl-python",
-      "SPDXID": "SPDXRef-Package-packageurl-python",
-      "versionInfo": "0.17.6",
-      "supplier": "Organization: the purl authors",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "MIT",
-      "licenseDeclared": "MIT",
-      "copyrightText": "Copyright (c) the purl authors",
-      "summary": "A purl aka. Package URL parser and builder",
-      "homepage": "https://github.com/package-url/packageurl-python",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
-        }
-      ]
-    },
-    {
-      "name": "ijson",
-      "SPDXID": "SPDXRef-Package-ijson",
-      "versionInfo": "3.6.0",
-      "supplier": "Organization: Rodrigo Tobar",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "BSD-3-Clause AND ISC",
-      "licenseDeclared": "BSD-3-Clause AND ISC",
-      "copyrightText": "Copyright (c) Rodrigo Tobar",
-      "summary": "Iterative JSON parser with standard Python iterator interfaces",
-      "homepage": "https://github.com/ICRAR/ijson",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/ijson@3.6.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "2b46b727320a9ed40e1328af07e777d322c8f269672c510cac47e2ae95fc56f7"
+          "referenceLocator": "pkg:generic/SBOMcraft@0.7.6.0"
         }
       ]
     },
@@ -118,6 +66,32 @@
       ]
     },
     {
+      "name": "PySide6",
+      "SPDXID": "SPDXRef-Package-PySide6",
+      "versionInfo": "6.12.0",
+      "supplier": "Organization: Qt for Python Team",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "LGPL-3.0-only",
+      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "copyrightText": "Copyright (c) Qt for Python Team",
+      "summary": "Python bindings for the Qt cross-platform application and UI framework",
+      "homepage": "https://pyside.org",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/pyside6@6.12.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "453eff898da8fdba4c01a0c3152892e3353d0bbf20c68e4a1b4d08b6d3886b22"
+        }
+      ]
+    },
+    {
       "name": "openpyxl",
       "SPDXID": "SPDXRef-Package-openpyxl",
       "versionInfo": "3.1.5",
@@ -144,28 +118,54 @@
       ]
     },
     {
-      "name": "PySide6",
-      "SPDXID": "SPDXRef-Package-PySide6",
-      "versionInfo": "6.12.0",
-      "supplier": "Organization: Qt for Python Team",
+      "name": "ijson",
+      "SPDXID": "SPDXRef-Package-ijson",
+      "versionInfo": "3.6.0",
+      "supplier": "Organization: Rodrigo Tobar",
       "downloadLocation": "NOASSERTION",
       "filesAnalyzed": false,
-      "licenseConcluded": "LGPL-3.0-only",
-      "licenseDeclared": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
-      "copyrightText": "Copyright (c) Qt for Python Team",
-      "summary": "Python bindings for the Qt cross-platform application and UI framework",
-      "homepage": "https://pyside.org",
+      "licenseConcluded": "BSD-3-Clause AND ISC",
+      "licenseDeclared": "BSD-3-Clause AND ISC",
+      "copyrightText": "Copyright (c) Rodrigo Tobar",
+      "summary": "Iterative JSON parser with standard Python iterator interfaces",
+      "homepage": "https://github.com/ICRAR/ijson",
       "externalRefs": [
         {
           "referenceCategory": "PACKAGE-MANAGER",
           "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/pyside6@6.12.0"
+          "referenceLocator": "pkg:pypi/ijson@3.6.0"
         }
       ],
       "checksums": [
         {
           "algorithm": "SHA256",
-          "checksumValue": "453eff898da8fdba4c01a0c3152892e3353d0bbf20c68e4a1b4d08b6d3886b22"
+          "checksumValue": "2b46b727320a9ed40e1328af07e777d322c8f269672c510cac47e2ae95fc56f7"
+        }
+      ]
+    },
+    {
+      "name": "packageurl-python",
+      "SPDXID": "SPDXRef-Package-packageurl-python",
+      "versionInfo": "0.17.6",
+      "supplier": "Organization: the purl authors",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) the purl authors",
+      "summary": "A purl aka. Package URL parser and builder",
+      "homepage": "https://github.com/package-url/packageurl-python",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/packageurl-python@0.17.6"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3aa736c878079279e13ac0feec939e892728e63d2e134620936b1ba3cd5b9002"
         }
       ]
     },
@@ -244,32 +244,6 @@
         {
           "algorithm": "SHA256",
           "checksumValue": "4d8e5c59ce547431fc022b58a9a1a43142b920251397667467e280b6d5fd4e66"
-        }
-      ]
-    },
-    {
-      "name": "et_xmlfile",
-      "SPDXID": "SPDXRef-Package-et-xmlfile",
-      "versionInfo": "2.0.0",
-      "supplier": "Organization: See AUTHORS.txt",
-      "downloadLocation": "NOASSERTION",
-      "filesAnalyzed": false,
-      "licenseConcluded": "MIT",
-      "licenseDeclared": "MIT",
-      "copyrightText": "Copyright (c) See AUTHORS.txt",
-      "summary": "An implementation of lxml.xmlfile for the standard library",
-      "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile",
-      "externalRefs": [
-        {
-          "referenceCategory": "PACKAGE-MANAGER",
-          "referenceType": "purl",
-          "referenceLocator": "pkg:pypi/et_xmlfile@2.0.0"
-        }
-      ],
-      "checksums": [
-        {
-          "algorithm": "SHA256",
-          "checksumValue": "3d9bd234d7d32f64c3cb2c69651bca279929c3ddab02515ef862bfb7e52f220b"
         }
       ]
     },
@@ -374,6 +348,32 @@
         {
           "algorithm": "SHA256",
           "checksumValue": "e15965c7e43f2980a0adfe04f7aef1bc53b56bc07f25fb83f8d7235b6cd99735"
+        }
+      ]
+    },
+    {
+      "name": "et_xmlfile",
+      "SPDXID": "SPDXRef-Package-et-xmlfile",
+      "versionInfo": "2.0.0",
+      "supplier": "Organization: See AUTHORS.txt",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "copyrightText": "Copyright (c) See AUTHORS.txt",
+      "summary": "An implementation of lxml.xmlfile for the standard library",
+      "homepage": "https://foss.heptapod.net/openpyxl/et_xmlfile",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:pypi/et_xmlfile@2.0.0"
+        }
+      ],
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "3d9bd234d7d32f64c3cb2c69651bca279929c3ddab02515ef862bfb7e52f220b"
         }
       ]
     },
